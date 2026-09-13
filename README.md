@@ -141,7 +141,22 @@ npm run preview
 
 `npm run preview` предназначен для локальной проверки сборки и сам по себе не включает HTTPS.
 
+## GitHub Pages
+
+Автоматическая публикация настроена в `.github/workflows/pages.yml`.
+
+1. В репозитории `brownyunki/NOTA` откройте **Settings → Pages**.
+2. В разделе **Build and deployment → Source** выберите **GitHub Actions**.
+3. Отправьте изменения в ветку `main`.
+4. Во вкладке **Actions** дождитесь успешного выполнения **Deploy GitHub Pages**.
+5. Откройте **https://brownyunki.github.io/NOTA/**.
+
+Workflow устанавливает зависимости, запускает тесты и собирает приложение с базовым путём `/NOTA/`. Локальный запуск по-прежнему работает от корня сайта. При следующих push в `main` сайт обновляется автоматически. Папку `dist` коммитить не нужно.
+
+Для ручного запуска используйте **Actions → Deploy GitHub Pages → Run workflow**. HTTPS-адрес Pages подходит для запроса микрофона на телефоне.
+
 ## Тесты
+
 
 ```sh
 node --test src/progress.test.mjs src/training.test.mjs src/timing.test.mjs src/pitch.test.mjs src/silence-gate.test.mjs
