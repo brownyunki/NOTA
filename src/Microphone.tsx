@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { detectPitch, heardName } from './pitch';
 import { SilenceGate } from './silence-gate';
+import { sensitivity } from './calibration';
 
-type Props = { target: number; paused: boolean; sound: boolean; volume: number; onMatch: () => void; onWrong: () => void; onActive: (active: boolean) => void; onReady: (ready: boolean) => void };
+type Props = { target: number; paused: boolean; sound: boolean; volume: number; onEnableSound: () => void; onMatch: () => void; onWrong: () => void; onActive: (active: boolean) => void; onReady: (ready: boolean) => void };
 export function Microphone(props: Props) {
   const latest = useRef(props); latest.current = props;
   const [active, setActive] = useState(false);
@@ -15,6 +16,35 @@ export function Microphone(props: Props) {
   const wrongUntil = useRef(0);
   const matchTimeout = useRef<number | undefined>(undefined);
   const notificationGain = useRef<GainNode | null>(null);
+  const [calibrating, setCalibrating] = useState(true);
+  const calibration = useRef({ phase: 'noise', noise: [] as number[], signal: [] as number[], noiseLevel: 0.0001 });
+  const thresholds = useRef({ detection: 0.006, silence: 0.006, reference: 0.02 });
+  function recalibrate() {
+    clearTimeout(matchTimeout.current);
+    calibration.current = { phase: 'noise', noise: [], signal: [], noiseLevel: 0.0001 };
+    setCalibrating(true); silenceGate.current.reset(); latest.current.onReady(false);
+    stable.current.midi = -1;
+    stable.current.matched = false;
+    stable.current.readyAt = performance.now() + 500;
+    setStatus('waiting'); setMessage('Настройка: приглуши все струны на пару секунд — измерю фоновый шум.');
+  }
+  function successCue() {
+    const ctx = resources.current?.ctx;
+    const current = latest.current;
+    if (!ctx || !current.sound || current.volume === 0) return;
+    const output = ctx.createGain(); output.gain.value = current.volume / 100;
+    notificationGain.current = output; output.connect(ctx.destination);
+    const tone = ctx.createOscillator(); const envelope = ctx.createGain();
+    tone.type = 'triangle'; tone.frequency.setValueAtTime(880, ctx.currentTime);
+    tone.frequency.setValueAtTime(1318.5, ctx.currentTime + 0.14);
+    envelope.gain.setValueAtTime(0, ctx.currentTime);
+    envelope.gain.linearRampToValueAtTime(0.28, ctx.currentTime + 0.012);
+    envelope.gain.setValueAtTime(0.2, ctx.currentTime + 0.14);
+    envelope.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.38);
+    tone.connect(envelope); envelope.connect(output);
+    tone.onended = () => { tone.disconnect(); envelope.disconnect(); output.disconnect(); if (notificationGain.current === output) notificationGain.current = null; };
+    tone.start(); tone.stop(ctx.currentTime + 0.4);
+  }
   useEffect(() => {
     if (notificationGain.current) notificationGain.current.gain.value = props.sound ? props.volume / 100 : 0;
   }, [props.sound, props.volume]);
@@ -62,6 +92,7 @@ export function Microphone(props: Props) {
       source.connect(analyser);
       const data = new Float32Array(analyser.fftSize);
       const rate = ctx.sampleRate;
+      recalibrate();
       silenceGate.current.reset(); latest.current.onReady(false);
       stable.current = { midi: -1, since: 0, target: latest.current.target, matched: false, readyAt: performance.now() + 400 };
       const interval = window.setInterval(() => {
@@ -71,41 +102,56 @@ export function Microphone(props: Props) {
         if (now < stable.current.readyAt || stable.current.matched) return;
         analyser.getFloatTimeDomainData(data);
         let energy = 0; for (const value of data) energy += value * value;
-        setLevel(Math.min(100, Math.sqrt(energy / data.length) * 700));
+        const rms = Math.sqrt(energy / data.length);
+        setLevel(Math.min(100, rms / thresholds.current.reference * 80));
+        const setup = calibration.current;
+        if (setup.phase === 'noise') {
+          setup.noise.push(rms);
+          setMessage('Настройка: приглуши все струны на пару секунд — измерю фоновый шум.');
+          if (setup.noise.length >= 20) {
+            const sorted = [...setup.noise].sort((a, b) => a - b);
+            setup.noiseLevel = Math.max(0.00001, sorted[Math.floor(sorted.length * 0.75)]);
+            setup.phase = 'string';
+          }
+          return;
+        }
+        if (setup.phase === 'string') {
+          const sample = detectPitch(data, rate, Math.max(0.00003, setup.noiseLevel * 2));
+          if (sample?.midi === 40 && Math.abs(sample.cents) <= 45) setup.signal.push(rms);
+          else setup.signal = [];
+          setMessage(sample && sample.midi !== 40 ? `Слышу ${heardName(sample.midi)}. Для настройки сыграй Ми: 6-я, самая толстая струна, открытая (лад 0).` : 'Сыграй Ми: 6-я, самая толстая струна, открытая (лад 0). Играй с обычной комфортной громкостью.');
+          if (setup.signal.length >= 5) {
+            const measured = [...setup.signal].sort((a, b) => a - b)[2];
+            const tuned = sensitivity(setup.noiseLevel, measured);
+            if (tuned) {
+              thresholds.current = tuned; setup.phase = 'done'; setCalibrating(false);
+              silenceGate.current.reset(); setMessage('Чувствительность настроена! Приглуши струну, затем начнём тренировку.');
+            } else setMessage('Струну трудно отличить от фона. Поднеси телефон ближе или убери фоновый шум и повтори настройку.');
+          }
+          return;
+        }
         if (!silenceGate.current.ready) {
           stable.current.midi = -1;
-          if (silenceGate.current.update(Math.sqrt(energy / data.length), now)) {
+          if (silenceGate.current.update(rms, now, thresholds.current.silence)) {
             current.onReady(true); setStatus('listening'); setMessage('Слушаю… Теперь сыграй новую ноту.');
           } else {
             setStatus('waiting'); setMessage('Приглуши струну. Дождусь затухания — предыдущий звук не считается ответом.');
           }
           return;
         }
-        const pitch = detectPitch(data, rate);
-        if (!pitch) { stable.current.midi = -1; if (now < wrongUntil.current) return; setStatus('listening'); setMessage(energy / data.length > 0.000036 ? 'Слышу звук, но нота неясна. Сыграй одну струну, остальные приглуши.' : 'Слушаю… Сыграй одну струну.'); return; }
+        const pitch = detectPitch(data, rate, thresholds.current.detection);
+        if (!pitch) { stable.current.midi = -1; if (now < wrongUntil.current) return; setStatus('listening'); setMessage(rms > thresholds.current.detection ? 'Слышу звук, но нота неясна. Сыграй одну струну, остальные приглуши.' : 'Слушаю… Сыграй одну струну.'); return; }
         if (pitch.midi !== stable.current.midi) { stable.current.midi = pitch.midi; stable.current.since = now; return; }
         if (now - stable.current.since < 220) return;
         if (pitch.midi === current.target && Math.abs(pitch.cents) <= 40) {
           stable.current.matched = true; setStatus('correct'); setMessage(`Верно! ${heardName(pitch.midi)}.`);
-          if (current.sound && current.volume > 0 && ctx) {
-            const output = ctx.createGain(); output.gain.value = current.volume / 100;
-            notificationGain.current = output; output.connect(ctx.destination);
-            const tone = ctx.createOscillator(); const envelope = ctx.createGain();
-            tone.type = 'sine'; tone.frequency.setValueAtTime(880, ctx.currentTime);
-            tone.frequency.setValueAtTime(1174.66, ctx.currentTime + 0.085);
-            envelope.gain.setValueAtTime(0, ctx.currentTime);
-            envelope.gain.linearRampToValueAtTime(0.12, ctx.currentTime + 0.008);
-            envelope.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18);
-            tone.connect(envelope); envelope.connect(output);
-            tone.onended = () => { tone.disconnect(); envelope.disconnect(); output.disconnect(); if (notificationGain.current === output) notificationGain.current = null; };
-            tone.start(); tone.stop(ctx.currentTime + 0.2);
-          }
+          successCue();
           // Finish the cue before transitioning; the next note waits for sustained quiet.
           matchTimeout.current = window.setTimeout(() => {
             if (generation.current !== token) return;
             if (latest.current.paused || document.hidden) { stable.current.matched = false; stable.current.midi = -1; return; }
             current.onMatch();
-          }, 260);
+          }, 460);
         } else {
           setStatus('wrong'); wrongUntil.current = now + 1000;
           const octave = pitch.midi % 12 === current.target % 12 && pitch.midi !== current.target;
@@ -130,8 +176,19 @@ export function Microphone(props: Props) {
     }
   }
   return <section className={`microphone-panel mic-${error ? 'wrong' : status}`} aria-label="Микрофон">
+    {active && calibrating && <div className="calibration-title"><strong>Настроим микрофон под твою гитару</strong><span>Ми (E) · 6-я струна · открытая, лад 0</span><small>Сначала тишина, затем один щипок обычной громкости. Это не задание и не влияет на результат.</small></div>}
     <div className="mic-controls"><button className="primary" onClick={active || pending ? stop : () => void start()}>{pending ? 'Отменить подключение' : active ? 'Выключить микрофон' : 'Включить микрофон'}</button><div className="mic-level" aria-label="Уровень входящего звука"><div style={{ width: `${level}%` }} /></div></div>
     {error ? <p role="alert">{error}</p> : <p role="status"><span className="mic-status-icon" aria-hidden="true">{status === 'wrong' ? '↔' : status === 'correct' ? '✓' : '●'}</span>{message}</p>}
+    <div className="mic-settings">
+      {active && <button className="text-button" onClick={recalibrate}>Настроить чувствительность заново</button>}
+      {!props.sound || props.volume === 0 ? <button className="text-button" onClick={props.onEnableSound}>Включить звук правильного ответа</button> : active && <button className="text-button" onClick={() => {
+        if (calibration.current.phase !== 'done') return;
+        silenceGate.current.reset(); latest.current.onReady(false);
+        stable.current.readyAt = performance.now() + 800;
+        stable.current.midi = -1;
+        successCue();
+      }} disabled={calibrating}>Проверить сигнал успеха</button>}
+    </div>
     <small>Звук обрабатывается на устройстве и не записывается. Можно искать нужную ноту без ограничения попыток.</small>
   </section>;
 }

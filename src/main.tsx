@@ -121,6 +121,12 @@ function Trainer({ mode, onModeChange }: { mode: number; onModeChange: (mode: nu
   const [sound, setSound] = useState(audioSettings?.enabled ?? false);
   const [volume, setVolume] = useState(audioSettings?.volume ?? 50);
   const [needsAudioChoice, setNeedsAudioChoice] = useState(audioSettings === null);
+  const [audioPreview, setAudioPreview] = useState(false);
+  useEffect(() => {
+    if (!audioPreview) return;
+    const timeout = window.setTimeout(() => setAudioPreview(false), 3300);
+    return () => window.clearTimeout(timeout);
+  }, [audioPreview]);
   const [answerOrder, setAnswerOrder] = useState(() => shuffleAnswers());
   const welcomeDialog = useRef<HTMLDialogElement>(null);
   const masterGain = useRef<GainNode | null>(null);
@@ -137,6 +143,12 @@ function Trainer({ mode, onModeChange }: { mode: number; onModeChange: (mode: nu
   }, [sound, volume, needsAudioChoice]);
   function selectAudio(enabled: boolean) {
     setSound(enabled); setNeedsAudioChoice(false); welcomeDialog.current?.close();
+    if (enabled) {
+      const previewVolume = volume > 0 ? volume : 50;
+      setVolume(previewVolume);
+      setAudioPreview(true);
+      void play(14, previewVolume);
+    }
   }
   const [hint, setHint] = useState(false);
   const [cheatOpen, setCheatOpen] = useState(false);
@@ -179,8 +191,8 @@ function Trainer({ mode, onModeChange }: { mode: number; onModeChange: (mode: nu
 
     };
   }, [running, needsAudioChoice, index, round, range]);
-  async function play(noteIndex = index) {
-    if (!sound || volume === 0 || needsAudioChoice || mode === 3) return;
+  async function play(noteIndex = index, previewVolume?: number) {
+    if (previewVolume === undefined && (!sound || volume === 0 || needsAudioChoice || mode === 3)) return;
     try {
       const ctx = audio.current ?? new AudioContext(); audio.current = ctx;
       await ctx.resume();
@@ -188,7 +200,7 @@ function Trainer({ mode, onModeChange }: { mode: number; onModeChange: (mode: nu
         masterGain.current = ctx.createGain();
         masterGain.current.connect(ctx.destination);
       }
-      masterGain.current.gain.value = volume / 100;
+      masterGain.current.gain.value = (previewVolume ?? volume) / 100;
       const previous = guitarVoice.current;
       if (previous) {
         previous.gain.gain.cancelScheduledValues(ctx.currentTime);
@@ -280,7 +292,7 @@ function Trainer({ mode, onModeChange }: { mode: number; onModeChange: (mode: nu
     <dialog ref={welcomeDialog} className="welcome-dialog" aria-labelledby="welcome-title" aria-describedby="welcome-description" onCancel={event => { event.preventDefault(); selectAudio(false); }}>
       <div className="eyebrow">ПЕРЕД ПЕРВОЙ НОТОЙ</div>
       <h2 id="welcome-title">Занимаемся со звуком?</h2>
-      <p id="welcome-description">После ответа прозвучит нота. Выбери, как тебе удобнее: звук и громкость можно изменить в любой момент.</p>
+      <p id="welcome-description">Нажми «Включить звук» — прозвучит пример гитарной ноты. В тренировках звук сопровождает ответы, а в режиме с микрофоном звучит короткий сигнал успеха. Громкость можно изменить в любой момент.</p>
       <div className="welcome-actions"><button autoFocus className="primary" onClick={() => selectAudio(true)}>Включить звук</button><button className="answer" onClick={() => selectAudio(false)}>Без звука</button></div>
     </dialog>
     <header><a className="brand" href="./" aria-label="Нота, главная"><span className="brand-icon">♪</span> нота<span className="brand-dot">.</span></a><button className={`sound ${sound ? '' : 'muted'}`} onClick={() => setSound(v => !v)} aria-pressed={sound} aria-label={sound ? 'Выключить звук' : 'Включить звук'}><span aria-hidden="true">{sound ? '♫' : '♩'}</span><span>Звук {sound ? 'вкл' : 'выкл'}</span></button><label className="volume-control"><span>Громкость</span><input type="range" min="0" max="100" step="1" value={volume} onChange={event => setVolume(Number(event.target.value))} aria-label="Громкость звука" /><output>{volume}%</output></label><button className="text-button audio-choice-button" onClick={() => setNeedsAudioChoice(true)}>Выбрать звук</button></header>
@@ -300,7 +312,7 @@ function Trainer({ mode, onModeChange }: { mode: number; onModeChange: (mode: nu
             {mode === 2 ? <Fretboard target={index} /> : <Staff index={index} reveal={answer !== null || hint} />}
             {mode !== 2 && <div className="notation-label">СКРИПИЧНЫЙ КЛЮЧ · ГИТАРА</div>}
             {mode === 0 ? <div className="answers">{answerOrder.map((i, position) => <button ref={position === 0 ? firstAnswer : undefined} key={NOTES[i].letter} disabled={answer !== null} className={`answer ${answer !== null && isCorrectAnswer(i, index) ? 'correct' : ''} ${answer === i && !isCorrectAnswer(i, index) ? 'incorrect' : ''}`} onClick={() => choose(i)}>{NOTES[i].name} <span>({NOTES[i].letter})</span>{answer !== null && isCorrectAnswer(i, index) && <b aria-label="Правильный ответ"> ✓</b>}</button>)}</div>
-            : mode === 3 ? <Microphone onReady={ready => { if (!ready) recognitionClock.current.pause(performance.now()); setMicReady(ready); }} target={NOTES[index].midi - 12} sound={sound} volume={volume} paused={needsAudioChoice || cheatOpen || hint} onMatch={() => choose(index)} onWrong={() => { micWrong.current = true; }} onActive={active => { if (!active && micActive) recognitionClock.current.pause(performance.now(), true); setMicActive(active); }} />
+            : mode === 3 ? <Microphone onEnableSound={() => { setSound(true); if (volume === 0) setVolume(50); }} onReady={ready => { if (!ready) recognitionClock.current.pause(performance.now()); setMicReady(ready); }} target={NOTES[index].midi - 12} sound={sound} volume={volume} paused={needsAudioChoice || audioPreview || cheatOpen || hint} onMatch={() => choose(index)} onWrong={() => { micWrong.current = true; }} onActive={active => { if (!active && micActive) recognitionClock.current.pause(performance.now(), true); setMicActive(active); }} />
             : mode === 1 ? <Fretboard target={answer !== null || hint ? index : null} answer={answer} onChoose={choose} firstButton={firstAnswer} />
             : <div className="staff-choices">{noteChoices.map((i, position) => <button ref={position === 0 ? firstAnswer : undefined} key={i} disabled={answer !== null} className={`answer staff-choice ${answer !== null && i === index ? 'correct' : ''} ${answer === i && i !== index ? 'incorrect' : ''}`} onClick={() => choose(i)} aria-label={`Вариант ${position + 1}. ${NOTES[i].hint}`}><Staff index={i} reveal={answer !== null} /><span>{answer !== null && i === index ? '✓ Верная нота' : `Вариант ${position + 1}`}</span></button>)}</div>}
             <div className="feedback" aria-live="polite">{answer !== null ? <><div className={(mode === 0 ? isCorrectAnswer(answer, index) : answer === index) ? 'feedback-title success' : 'feedback-title'}>{(mode === 0 ? isCorrectAnswer(answer, index) : answer === index) ? 'Верно, это ' : 'Это '}{NOTES[index].name} ({NOTES[index].letter}){(mode === 0 ? isCorrectAnswer(answer, index) : answer === index) ? '!' : '. Запомним вместе.'}</div><p>{NOTES[index].hint} {guitarPositions(NOTES[index].midi)}.</p><div className="feedback-actions"><button className="text-button" disabled={!sound || mode === 3} onClick={() => void play()}>♫ Послушать</button><button ref={nextButton} className="primary" onClick={next}>{round === 9 ? 'К результатам' : 'Следующая нота'} <span>→</span></button></div></> : <><button className="text-button hint-button" onClick={() => { usedHint.current = true; setHint(v => !v); }} aria-expanded={hint}>ⓘ {hint ? 'Скрыть подсказку' : 'Нужна подсказка?'}</button>{hint ? <p>{NOTES[index].hint} Это {NOTES[index].name} ({NOTES[index].letter}). {guitarPositions(NOTES[index].midi)}.</p> : <p className="encouragement">Без спешки. Здесь можно ошибаться.</p>}</>}</div>

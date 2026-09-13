@@ -1,5 +1,5 @@
 export type Pitch = { midi: number; cents: number; frequency: number; level: number };
-export function detectPitch(input: Float32Array, sampleRate: number): Pitch | null {
+export function detectPitch(input: Float32Array, sampleRate: number, minimumLevel = 0.006): Pitch | null {
   const step = Math.max(1, Math.floor(sampleRate / 12000));
   const samples = new Float32Array(Math.floor(input.length / step));
   let energy = 0;
@@ -10,7 +10,7 @@ export function detectPitch(input: Float32Array, sampleRate: number): Pitch | nu
     energy += samples[i] ** 2;
   }
   const level = Math.sqrt(energy / samples.length);
-  if (level < 0.006) return null;
+  if (level < minimumLevel) return null;
   const rate = sampleRate / step;
   const maxLag = Math.min(Math.floor(rate / 65), Math.floor(samples.length / 2));
   const minLag = Math.floor(rate / 420);

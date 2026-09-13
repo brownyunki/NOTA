@@ -43,3 +43,6 @@ footer{justify-content:center;align-items:center;text-align:center;font-size:11p
 
 
 .microphone-panel.mic-waiting{background:#f1f0e9;border-color:#cccdbf}.microphone-panel.mic-waiting p{color:#72785f}@media (hover:none){.answer:active:not(:disabled){background:#f0f3e9}.primary:active:not(:disabled){background:#294834}.fret-cell:active:not(:disabled){background:#e3e8d8}}
+
+.calibration-title{display:flex;flex-direction:column;gap:9px;margin-bottom:18px}.calibration-title strong{font-size:14px}.calibration-title>span{font-size:13px;font-weight:700;color:#365843}.mic-settings{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px}.mic-settings .text-button{text-align:left;min-height:44px}
+
