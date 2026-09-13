@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { detectPitch, heardName } from './pitch';
+import { SilenceGate } from './silence-gate';
 
-type Props = { target: number; paused: boolean; sound: boolean; volume: number; onMatch: () => void; onWrong: () => void; onActive: (active: boolean) => void };
+type Props = { target: number; paused: boolean; sound: boolean; volume: number; onMatch: () => void; onWrong: () => void; onActive: (active: boolean) => void; onReady: (ready: boolean) => void };
 export function Microphone(props: Props) {
   const latest = useRef(props); latest.current = props;
   const [active, setActive] = useState(false);
@@ -9,7 +10,8 @@ export function Microphone(props: Props) {
   const [message, setMessage] = useState('Включи микрофон и сыграй одну струну.');
   const [level, setLevel] = useState(0);
   const [error, setError] = useState('');
-  const [status, setStatus] = useState<'listening' | 'wrong' | 'correct'>('listening');
+  const [status, setStatus] = useState<'listening' | 'waiting' | 'wrong' | 'correct'>('listening');
+  const silenceGate = useRef(new SilenceGate());
   const wrongUntil = useRef(0);
   const matchTimeout = useRef<number | undefined>(undefined);
   const notificationGain = useRef<GainNode | null>(null);
@@ -20,6 +22,7 @@ export function Microphone(props: Props) {
   const generation = useRef(0);
   const stable = useRef({ midi: -1, since: 0, target: props.target, matched: false, readyAt: 0 });
   function stop() {
+    silenceGate.current.reset(); latest.current.onReady(false);
     clearTimeout(matchTimeout.current);
     notificationGain.current = null;
     setStatus('listening');
@@ -35,9 +38,10 @@ export function Microphone(props: Props) {
     return () => { document.removeEventListener('visibilitychange', hidden); stop(); };
   }, []);
   useEffect(() => {
-    setStatus('listening'); wrongUntil.current = 0;
+    silenceGate.current.reset(); latest.current.onReady(false);
+    setStatus('waiting'); wrongUntil.current = 0;
     stable.current = { midi: -1, since: 0, target: props.target, matched: false, readyAt: performance.now() + 700 };
-    setMessage(active ? 'Слушаю следующую ноту…' : 'Включи микрофон и сыграй одну струну.');
+    setMessage(active ? 'Приглуши струну. Дождусь затухания и начну слушать следующую ноту.' : 'Включи микрофон и приглуши струны перед началом.');
   }, [props.target]);
   async function start() {
     if (pending || active) return;
@@ -58,15 +62,25 @@ export function Microphone(props: Props) {
       source.connect(analyser);
       const data = new Float32Array(analyser.fftSize);
       const rate = ctx.sampleRate;
+      silenceGate.current.reset(); latest.current.onReady(false);
       stable.current = { midi: -1, since: 0, target: latest.current.target, matched: false, readyAt: performance.now() + 400 };
       const interval = window.setInterval(() => {
         const current = latest.current;
-        if (current.paused || document.hidden) { stable.current.midi = -1; setStatus('listening'); setMessage('Пауза — закрой подсказки и окно настроек, затем сыграй ноту.'); return; }
+        if (current.paused || document.hidden) { silenceGate.current.reset(); current.onReady(false); stable.current.midi = -1; setStatus('listening'); setMessage('Пауза — закрой подсказки и окно настроек, затем приглуши струны.'); return; }
         const now = performance.now();
         if (now < stable.current.readyAt || stable.current.matched) return;
         analyser.getFloatTimeDomainData(data);
         let energy = 0; for (const value of data) energy += value * value;
         setLevel(Math.min(100, Math.sqrt(energy / data.length) * 700));
+        if (!silenceGate.current.ready) {
+          stable.current.midi = -1;
+          if (silenceGate.current.update(Math.sqrt(energy / data.length), now)) {
+            current.onReady(true); setStatus('listening'); setMessage('Слушаю… Теперь сыграй новую ноту.');
+          } else {
+            setStatus('waiting'); setMessage('Приглуши струну. Дождусь затухания — предыдущий звук не считается ответом.');
+          }
+          return;
+        }
         const pitch = detectPitch(data, rate);
         if (!pitch) { stable.current.midi = -1; if (now < wrongUntil.current) return; setStatus('listening'); setMessage(energy / data.length > 0.000036 ? 'Слышу звук, но нота неясна. Сыграй одну струну, остальные приглуши.' : 'Слушаю… Сыграй одну струну.'); return; }
         if (pitch.midi !== stable.current.midi) { stable.current.midi = pitch.midi; stable.current.since = now; return; }
@@ -86,7 +100,7 @@ export function Microphone(props: Props) {
             tone.onended = () => { tone.disconnect(); envelope.disconnect(); output.disconnect(); if (notificationGain.current === output) notificationGain.current = null; };
             tone.start(); tone.stop(ctx.currentTime + 0.2);
           }
-          // Finish the cue before transitioning; the next note also has a 700 ms listening delay.
+          // Finish the cue before transitioning; the next note waits for sustained quiet.
           matchTimeout.current = window.setTimeout(() => {
             if (generation.current !== token) return;
             if (latest.current.paused || document.hidden) { stable.current.matched = false; stable.current.midi = -1; return; }
@@ -106,7 +120,7 @@ export function Microphone(props: Props) {
         }
       };
       stream.getAudioTracks().forEach(track => track.addEventListener('ended', () => { stop(); setError('Микрофон отключился. Включи его ещё раз.'); }));
-      setActive(true); setPending(false); setStatus('listening'); setMessage('Слушаю… Сыграй одну струну.'); latest.current.onActive(true);
+      setActive(true); setPending(false); setStatus('waiting'); setMessage('Приглуши струны. Начну слушать после затухания.'); latest.current.onActive(true);
     } catch (e) {
       stream?.getTracks().forEach(t => t.stop()); if (ctx) void ctx.close();
       if (generation.current !== token) return;

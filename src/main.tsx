@@ -153,10 +153,11 @@ function Trainer({ mode, onModeChange }: { mode: number; onModeChange: (mode: nu
 
   const [newRecord, setNewRecord] = useState(false);
   const [micActive, setMicActive] = useState(false);
+  const [micReady, setMicReady] = useState(false);
   const micWrong = useRef(false);
   const recognitionClock = useRef(new RecognitionClock());
   const timing = sessionTiming(timedAnswers);
-  const running = started && !finished && answer === null && (mode !== 3 || micActive);
+  const running = started && !finished && answer === null && (mode !== 3 || (micActive && micReady));
   useEffect(() => {
     recognitionClock.current.reset(performance.now(), false);
 
@@ -222,6 +223,7 @@ function Trainer({ mode, onModeChange }: { mode: number; onModeChange: (mode: nu
     setNewRecord(speed.best[range] !== progress.speed.best[range]);
     const updated = { ...progress, speed, total: progress.total + 1, correct: progress.correct + Number(clean), sessions: progress.sessions + Number(round === 9), notes: recordNote(progress.notes, index, clean, assisted), mistakes: progress.mistakes.map((n, i) => i === index ? Math.max(0, n + (clean && !assisted ? -1 : 2)) : n) };
     setProgress(updated); setScore(s => s + Number(clean));
+    if (mode === 3) setMicReady(false);
     micWrong.current = false;
     try { localStorage.setItem(storageKey, JSON.stringify(updated)); setStorageError(false); } catch { setStorageError(true); }
     if (correct) {
@@ -298,7 +300,7 @@ function Trainer({ mode, onModeChange }: { mode: number; onModeChange: (mode: nu
             {mode === 2 ? <Fretboard target={index} /> : <Staff index={index} reveal={answer !== null || hint} />}
             {mode !== 2 && <div className="notation-label">СКРИПИЧНЫЙ КЛЮЧ · ГИТАРА</div>}
             {mode === 0 ? <div className="answers">{answerOrder.map((i, position) => <button ref={position === 0 ? firstAnswer : undefined} key={NOTES[i].letter} disabled={answer !== null} className={`answer ${answer !== null && isCorrectAnswer(i, index) ? 'correct' : ''} ${answer === i && !isCorrectAnswer(i, index) ? 'incorrect' : ''}`} onClick={() => choose(i)}>{NOTES[i].name} <span>({NOTES[i].letter})</span>{answer !== null && isCorrectAnswer(i, index) && <b aria-label="Правильный ответ"> ✓</b>}</button>)}</div>
-            : mode === 3 ? <Microphone target={NOTES[index].midi - 12} sound={sound} volume={volume} paused={needsAudioChoice || cheatOpen || hint} onMatch={() => choose(index)} onWrong={() => { micWrong.current = true; }} onActive={active => { if (!active && micActive) recognitionClock.current.pause(performance.now(), true); setMicActive(active); }} />
+            : mode === 3 ? <Microphone onReady={ready => { if (!ready) recognitionClock.current.pause(performance.now()); setMicReady(ready); }} target={NOTES[index].midi - 12} sound={sound} volume={volume} paused={needsAudioChoice || cheatOpen || hint} onMatch={() => choose(index)} onWrong={() => { micWrong.current = true; }} onActive={active => { if (!active && micActive) recognitionClock.current.pause(performance.now(), true); setMicActive(active); }} />
             : mode === 1 ? <Fretboard target={answer !== null || hint ? index : null} answer={answer} onChoose={choose} firstButton={firstAnswer} />
             : <div className="staff-choices">{noteChoices.map((i, position) => <button ref={position === 0 ? firstAnswer : undefined} key={i} disabled={answer !== null} className={`answer staff-choice ${answer !== null && i === index ? 'correct' : ''} ${answer === i && i !== index ? 'incorrect' : ''}`} onClick={() => choose(i)} aria-label={`Вариант ${position + 1}. ${NOTES[i].hint}`}><Staff index={i} reveal={answer !== null} /><span>{answer !== null && i === index ? '✓ Верная нота' : `Вариант ${position + 1}`}</span></button>)}</div>}
             <div className="feedback" aria-live="polite">{answer !== null ? <><div className={(mode === 0 ? isCorrectAnswer(answer, index) : answer === index) ? 'feedback-title success' : 'feedback-title'}>{(mode === 0 ? isCorrectAnswer(answer, index) : answer === index) ? 'Верно, это ' : 'Это '}{NOTES[index].name} ({NOTES[index].letter}){(mode === 0 ? isCorrectAnswer(answer, index) : answer === index) ? '!' : '. Запомним вместе.'}</div><p>{NOTES[index].hint} {guitarPositions(NOTES[index].midi)}.</p><div className="feedback-actions"><button className="text-button" disabled={!sound || mode === 3} onClick={() => void play()}>♫ Послушать</button><button ref={nextButton} className="primary" onClick={next}>{round === 9 ? 'К результатам' : 'Следующая нота'} <span>→</span></button></div></> : <><button className="text-button hint-button" onClick={() => { usedHint.current = true; setHint(v => !v); }} aria-expanded={hint}>ⓘ {hint ? 'Скрыть подсказку' : 'Нужна подсказка?'}</button>{hint ? <p>{NOTES[index].hint} Это {NOTES[index].name} ({NOTES[index].letter}). {guitarPositions(NOTES[index].midi)}.</p> : <p className="encouragement">Без спешки. Здесь можно ошибаться.</p>}</>}</div>
