@@ -71,27 +71,76 @@ function Staff({ index, reveal }: { index: number; reveal: boolean }) {
 function Chevron() {
   return <svg className="chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 9 6 6 6-6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
+function StaffPicker({ target, answer, onChoose }: { target: number; answer: number | null; onChoose: (id: number) => void }) {
+  const [hovered, setHovered] = useState<number | null>(null);
+  function draw(id: number, className: string) {
+    const n = NOTES[id]; const y = n.y * 2; const down = n.y <= 90;
+    return <g className={className} pointerEvents="none">
+      {[156, 178, 200].filter(line => n.y >= line).map(line => <line key={line} x1="177" x2="223" y1={line * 2} y2={line * 2} stroke="currentColor" strokeWidth="1.5" />)}
+      <ellipse cx="200" cy={y} rx="12" ry="8" transform={`rotate(-20 200 ${y})`} fill="currentColor" />
+      <line x1={down ? 189 : 211} x2={down ? 189 : 211} y1={y} y2={y + (down ? 65 : -65)} stroke="currentColor" strokeWidth="2" />
+    </g>;
+  }
+  return <div className="staff-picker">
+    <svg viewBox="0 0 340 475" role="group" aria-label="Выбери положение ноты на стане" onPointerLeave={() => setHovered(null)}>
+      {[46, 68, 90, 112, 134].map(y => <line key={y} x1="24" x2="316" y1={y * 2} y2={y * 2} stroke="currentColor" strokeWidth="1.4" opacity=".45" />)}
+      <text x="30" y="274" fontSize="225" fontFamily="Georgia, 'Times New Roman', serif" pointerEvents="none">𝄞</text>
+      {answer === null && hovered !== null && <line x1="95" x2="316" y1={NOTES[hovered].y * 2} y2={NOTES[hovered].y * 2} stroke="#91a77a" strokeDasharray="3 5" />}
+      {answer === null && hovered !== null && draw(hovered, 'picker-preview')}
+      {answer !== null && draw(target, 'picker-correct')}
+      {answer !== null && answer !== target && draw(answer, 'picker-wrong')}
+      {answer === null && GUITAR_NOTES.map(id => <rect key={id} className="staff-pick-area" x="90" y={NOTES[id].y * 2 - 11} width="226" height="22" rx="4" role="button" tabIndex={0} aria-label={NOTES[id].hint} onFocus={() => setHovered(id)} onPointerEnter={event => { if (event.pointerType !== 'touch') setHovered(id); }} onClick={() => onChoose(id)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onChoose(id); } }} />)}
+    </svg>
+  </div>;
+}
+function ReferenceStaff() {
+  const [selected, setSelected] = useState<number | null>(null);
+  const note = selected === null ? null : NOTES[selected];
+  return <div className="reference-staff">
+    <div className="reference-scroll">
+      <svg viewBox="0 0 970 255" className="continuous-staff" role="group" aria-label="Все ноты гитарного диапазона на одном стане">
+        {[46, 68, 90, 112, 134].map(y => <line key={y} x1="20" x2="950" y1={y} y2={y} stroke="currentColor" strokeWidth="1.3" opacity=".35" />)}
+        <text x="26" y="137" fontSize="116" fontFamily="Georgia, 'Times New Roman', serif">𝄞</text>
+        {GUITAR_NOTES.map((id, position) => {
+          const n = NOTES[id]; const x = 110 + position * 50; const down = n.y <= 90;
+          return <g key={id} className={`reference-note ${selected === id ? 'selected' : note?.letter === n.letter ? 'same-name' : ''}`} role="button" tabIndex={0} aria-label={`${n.name} (${n.letter}), ${guitarPositions(n.midi)}`} aria-pressed={selected === id} onClick={() => setSelected(id)} onFocus={() => setSelected(id)} onPointerEnter={event => { if (event.pointerType === 'mouse') setSelected(id); }} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelected(id); } }}>
+            <rect className="reference-hit" x={x - 23} y="8" width="46" height="228" rx="10" />
+            {[156, 178, 200].filter(y => n.y >= y).map(y => <line key={y} x1={x - 20} x2={x + 20} y1={y} y2={y} stroke="currentColor" strokeWidth="1.5" />)}
+            <ellipse cx={x} cy={n.y} rx="11" ry="8" transform={`rotate(-20 ${x} ${n.y})`} fill="currentColor" />
+            <line x1={x + (down ? -10 : 10)} x2={x + (down ? -10 : 10)} y1={n.y} y2={n.y + (down ? 56 : -56)} stroke="currentColor" strokeWidth="2" />
+          </g>;
+        })}
+      </svg>
+    </div>
+    <div className="reference-info">{note ? <><div className="reference-description" aria-live="polite"><strong>{note.name} ({note.letter})</strong><span>{guitarPositions(note.midi)}</span><p>{note.hint}</p></div><Fretboard target={selected} related /></> : <p>Наведи курсор или нажми на ноту, чтобы увидеть её название, струну и лад.</p>}</div>
+    <p className="reference-scroll-hint">На узком экране прокрути нотный стан вбок.</p>
+  </div>;
+}
 const MODES = [
   { label: 'Узнай ноту', key: 'nota-progress', question: 'Какая это нота?', instruction: 'Посмотри на нотный стан и выбери название.' },
   { label: 'Нота → гриф', key: 'nota-progress-to-fret', question: 'Где эта нота на грифе?', instruction: 'Посмотри на ноту и нажми на нужную струну и лад. 0 — открытая струна.' },
   { label: 'Гриф → нота', key: 'nota-progress-to-staff', question: 'Как записать эту ноту?', instruction: 'Найди ноту на стане, которая соответствует отмеченному месту на грифе.' },
-  { label: 'С гитарой', key: 'nota-progress-microphone', question: 'Сыграй эту ноту', instruction: 'Сыграй одну ноту на гитаре. Остальные струны приглуши — микрофон услышит её.' },
+  { label: 'С гитарой', key: 'nota-progress-microphone', question: 'Сыграй эту ноту', instruction: 'Сыграй ноту на экране. Остальные струны приглуши — микрофон услышит её.' },
 ] as const;
-function Fretboard({ target, answer, onChoose, firstButton, labeled = false }: { target: number | null; answer?: number | null; onChoose?: (note: number) => void; firstButton?: React.Ref<HTMLButtonElement>; labeled?: boolean }) {
+function Fretboard({ target, answer, onChoose, firstButton, labeled = false, related = false }: { target: number | null; answer?: number | null; onChoose?: (note: number) => void; firstButton?: React.Ref<HTMLButtonElement>; labeled?: boolean; related?: boolean }) {
   return <div className="fretboard-wrap"><div className="fretboard" role="group" aria-label="Гриф: первая тонкая струна сверху, шестая толстая снизу">
     <span className="fret-caption">Струна</span>{[0, 1, 2, 3].map(f => <span className="fret-caption" key={f}>{f === 0 ? '0 · откр.' : `${f} лад`}</span>)}
     {[1, 2, 3, 4, 5, 6].map(string => <React.Fragment key={string}><span className="string-number">{string}</span>{[0, 1, 2, 3].map(fret => {
       const note = NOTES.findIndex(n => n.midi === fretMidi(string, fret));
       const value = note >= 0 ? note : -(string * 4 + fret);
       const marked = target !== null && note === target;
+      const similar = related && target !== null && note >= 0 && !marked && NOTES[note].letter === NOTES[target].letter;
       const wrong = answer === value && !marked;
       const label = `${string}-я струна, ${fret === 0 ? 'открытая' : `${fret}-й лад`}`;
-      const content = <><span className="guitar-string" style={{ height: `${0.7 + string * 0.3}px` }} /><span className={`fret-dot ${labeled && note >= 0 ? 'fret-note-label' : ''} ${marked ? 'marked' : ''} ${wrong ? 'wrong' : ''}`}>{labeled && note >= 0 ? `${NOTES[note].name} (${NOTES[note].letter})` : marked ? '●' : wrong ? '×' : ''}</span></>;
+      const content = <><span className="guitar-string" style={{ height: `${0.7 + string * 0.3}px` }} /><span className={`fret-dot ${labeled && note >= 0 ? 'fret-note-label' : ''} ${marked ? 'marked' : ''} ${similar ? 'similar' : ''} ${wrong ? 'wrong' : ''}`}>{labeled && note >= 0 ? `${NOTES[note].name} (${NOTES[note].letter})` : marked ? '●' : similar ? '○' : wrong ? '×' : ''}</span></>;
       return onChoose ? <button ref={string === 1 && fret === 0 ? firstButton : undefined} className={`fret-cell ${fret === 0 ? 'open-string' : ''}`} key={fret} aria-label={`${label}${labeled && note >= 0 ? `, ${NOTES[note].name} (${NOTES[note].letter})` : ''}${marked ? labeled ? ', выбрано' : ', правильный ответ' : ''}`} disabled={(answer !== null && answer !== undefined) || (labeled && note < 0)} onClick={() => onChoose(value)}>{content}</button> : <div className={`fret-cell ${fret === 0 ? 'open-string' : ''}`} key={fret} aria-label={marked ? `Отмечено: ${label}` : undefined}>{content}</div>;
     })}</React.Fragment>)}
   </div><p className="fret-legend">1 — тонкая струна сверху · 6 — толстая снизу</p></div>;
 }
 function App() {
+  const [staffGame, setStaffGame] = useState<'point' | 'choices'>(() => {
+    try { return localStorage.getItem('nota-staff-game') === 'point' ? 'point' : 'choices'; } catch { return 'choices'; }
+  });
   const [mode, setMode] = useState(() => {
     try { const saved = localStorage.getItem('nota-mode'); return saved !== null && ['0', '1', '2', '3'].includes(saved) ? Number(saved) : 0; } catch { return 0; }
   });
@@ -99,10 +148,15 @@ function App() {
     setMode(value);
     try { localStorage.setItem('nota-mode', String(value)); } catch { /* Keep the mode for this visit. */ }
   }
-  return <Trainer key={mode} mode={mode} onModeChange={changeMode} />;
+  function changeStaffGame(value: 'point' | 'choices') {
+    setStaffGame(value);
+    try { localStorage.setItem('nota-staff-game', value); } catch { /* Keep choice for this visit. */ }
+  }
+  return <Trainer key={`${mode}:${staffGame}`} mode={mode} onModeChange={changeMode} staffGame={staffGame} onStaffGameChange={changeStaffGame} />;
 }
-function Trainer({ mode, onModeChange }: { mode: number; onModeChange: (mode: number) => void }) {
-  const storageKey = MODES[mode].key;
+function Trainer({ mode, onModeChange, staffGame, onStaffGameChange }: { mode: number; onModeChange: (mode: number) => void; staffGame: 'point' | 'choices'; onStaffGameChange: (value: 'point' | 'choices') => void }) {
+  const storageKey = mode === 2 && staffGame === 'point' ? 'nota-progress-to-staff-point' : MODES[mode].key;
+  const instruction = mode === 2 && staffGame === 'point' ? 'Посмотри на отмеченное место на грифе и нажми на нужную высоту на нотном стане.' : MODES[mode].instruction;
   const [progress, setProgress] = useState(() => readProgress(storageKey));
   const range = 3;
   const count = GUITAR_NOTES.length;
@@ -153,6 +207,7 @@ function Trainer({ mode, onModeChange }: { mode: number; onModeChange: (mode: nu
   }
   const [hint, setHint] = useState(false);
   const [cheatOpen, setCheatOpen] = useState(false);
+  const [cheatView, setCheatView] = useState<'staff' | 'cards'>('staff');
   const [cheatNote, setCheatNote] = useState(14);
   const usedHint = useRef(false);
   const [storageError, setStorageError] = useState(false);
@@ -167,6 +222,7 @@ function Trainer({ mode, onModeChange }: { mode: number; onModeChange: (mode: nu
   const [newRecord, setNewRecord] = useState(false);
   const [micActive, setMicActive] = useState(false);
   const [micReady, setMicReady] = useState(false);
+  const [micTraining, setMicTraining] = useState(false);
   const micWrong = useRef(false);
   const recognitionClock = useRef(new RecognitionClock());
   const timing = sessionTiming(timedAnswers);
@@ -269,6 +325,7 @@ function Trainer({ mode, onModeChange }: { mode: number; onModeChange: (mode: nu
     requestAnimationFrame(() => firstAnswer.current?.focus());
   }
   function restart() {
+    setMicTraining(false);
     micWrong.current = false;
     setStarted(false); setTimedAnswers([]); setNewRecord(false);
     setSuccessMessage('');
@@ -300,21 +357,23 @@ function Trainer({ mode, onModeChange }: { mode: number; onModeChange: (mode: nu
     <main>
       <section className="intro"><div className="eyebrow"><span /> НЕМНОГО ПРАКТИКИ КАЖДЫЙ ДЕНЬ</div><h1>Подружись с нотами</h1><p>Учись читать музыку в своём темпе.<br className="mobile-break" /> Одна нота за раз.</p></section>
       <div className="workspace">
-        <section className="exercise" aria-label="Тренировка">
+        <section className={`exercise ${mode === 3 && !micTraining ? 'mic-preparing' : ''}`} aria-label="Тренировка">
           <nav className="mode-picker" aria-label="Режим тренировки">{MODES.map((item, i) => <button key={item.key} aria-pressed={mode === i} onClick={() => onModeChange(i)}>{item.label}{i === 3 && <small className="mic-permission-label">Нужен доступ к микрофону</small>}</button>)}</nav>
-          <p className="mode-note">При смене режима начинается новая тренировка. Прогресс каждого режима сохраняется отдельно.</p>
+          {mode === 2 && <div className="cheat-view-switch" role="group" aria-label="Вариант игры"><button aria-pressed={staffGame === 'point'} onClick={() => onStaffGameChange('point')}>Указать на стане</button><button aria-pressed={staffGame === 'choices'} onClick={() => onStaffGameChange('choices')}>4 варианта</button></div>}
+          <p className="mode-note">При смене режима начинается новая тренировка. Прогресс каждого режима сохраняется отдельно.{mode === 2 && ' У двух вариантов игры свои результаты и рекорды.'}</p>
 <div className="guitar-range"><strong>Гитара · первые три лада</strong><span>Ми · 6-я открытая → Соль · 1-я, 3-й лад</span><small>Стандартный строй · Только ноты без диезов и бемолей</small></div>
           
           <div className="answer-notice" role="status" aria-live="polite" aria-atomic="true">{successMessage && <span key={round}>{successMessage}</span>}</div>
-          {!started ? <div className="timer-start"><div className="eyebrow">В СВОЁМ ТЕМПЕ</div><h2>Готов к 10 нотам?</h2><p>{MODES[mode].instruction} Занимайся в удобном ритме — здесь можно ошибаться.</p><button className="primary" onClick={() => { usedHint.current = cheatOpen; setStarted(true); }}>Начать тренировку →</button></div> : finished ? <div className="results"><div className="result-icon">✓</div><div className="eyebrow">ТРЕНИРОВКА ЗАВЕРШЕНА</div><h2>{score === 10 ? 'Все ноты на месте!' : 'Ещё на шаг ближе'}</h2><p>Каждая попытка помогает запомнить музыку.</p><div className="result-score">{score}<span> / 10</span></div><p>{mode === 3 ? 'нот без поиска другого звука' : 'правильных ответов'}</p><div className="session-speed"><strong>{seconds(timing.total)}</strong><span>на все ответы · в среднем {seconds(timing.average)} на ноту</span><p>{newRecord ? 'Новый личный рекорд!' : timing.eligible ? 'Отличная чистая тренировка!' : 'Для рекорда нужны 10 верных ответов без подсказок и перерывов.'}</p></div><button className="primary" onClick={restart}>Ещё 10 нот <span>→</span></button><small>Ноты, которые вызвали трудности, повторим чаще.</small></div> : <>
+          {!started ? <div className="timer-start"><div className="eyebrow">В СВОЁМ ТЕМПЕ</div><h2>Готов к 10 нотам?</h2><p>{instruction} Занимайся в удобном ритме — здесь можно ошибаться.</p><button className="primary" onClick={() => { usedHint.current = cheatOpen; setStarted(true); }}>{mode === 3 ? 'Подготовить микрофон →' : 'Начать тренировку →'}</button></div> : finished ? <div className="results"><div className="result-icon">✓</div><div className="eyebrow">ТРЕНИРОВКА ЗАВЕРШЕНА</div><h2>{score === 10 ? 'Все ноты на месте!' : 'Ещё на шаг ближе'}</h2><p>Каждая попытка помогает запомнить музыку.</p><div className="result-score">{score}<span> / 10</span></div><p>{mode === 3 ? 'нот без поиска другого звука' : 'правильных ответов'}</p><div className="session-speed"><strong>{seconds(timing.total)}</strong><span>на все ответы · в среднем {seconds(timing.average)} на ноту</span><p>{newRecord ? 'Новый личный рекорд!' : timing.eligible ? 'Отличная чистая тренировка!' : 'Для рекорда нужны 10 верных ответов без подсказок и перерывов.'}</p></div><button className="primary" onClick={restart}>Ещё 10 нот <span>→</span></button><small>Ноты, которые вызвали трудности, повторим чаще.</small></div> : <>
             <div className="exercise-top"><span className="lesson-label">01 <span>{MODES[mode].label}</span></span><span className="counter">{round + 1}<span> / 10</span></span></div>
             <div className="progress-track" role="progressbar" aria-label="Прогресс тренировки" aria-valuenow={round + Number(answer !== null)} aria-valuemin={0} aria-valuemax={10}><div style={{ width: `${(round + Number(answer !== null)) * 10}%` }} /></div>
-            <div className="question"><h2>{MODES[mode].question}</h2><p>{MODES[mode].instruction}</p></div>
-            {mode === 2 ? <Fretboard target={index} /> : <Staff index={index} reveal={answer !== null || hint} />}
+            <div className="question"><h2>{MODES[mode].question}</h2><p>{instruction}</p></div>
+            {mode === 2 ? staffGame === 'point' ? <div className="fret-staff-layout"><div className="compact-question-fret"><span className="exercise-caption">НОТА НА ГРИФЕ</span><Fretboard target={index} /></div><div><span className="exercise-caption">УКАЖИ НА СТАНЕ</span><StaffPicker key={`${index}:${round}`} target={index} answer={answer} onChoose={choose} /></div></div> : <Fretboard target={index} /> : <Staff index={index} reveal={answer !== null || hint} />}
             {mode !== 2 && <div className="notation-label">СКРИПИЧНЫЙ КЛЮЧ · ГИТАРА</div>}
             {mode === 0 ? <div className="answers">{answerOrder.map((i, position) => <button ref={position === 0 ? firstAnswer : undefined} key={NOTES[i].letter} disabled={answer !== null} className={`answer ${answer !== null && isCorrectAnswer(i, index) ? 'correct' : ''} ${answer === i && !isCorrectAnswer(i, index) ? 'incorrect' : ''}`} onClick={() => choose(i)}>{NOTES[i].name} <span>({NOTES[i].letter})</span>{answer !== null && isCorrectAnswer(i, index) && <b aria-label="Правильный ответ"> ✓</b>}</button>)}</div>
-            : mode === 3 ? <Microphone onEnableSound={() => { setSound(true); if (volume === 0) setVolume(50); }} onReady={ready => { if (!ready) recognitionClock.current.pause(performance.now()); setMicReady(ready); }} target={NOTES[index].midi - 12} sound={sound} volume={volume} paused={needsAudioChoice || audioPreview > 0 || cheatOpen || hint} onMatch={() => choose(index)} onWrong={() => { micWrong.current = true; }} onActive={active => { if (!active && micActive) recognitionClock.current.pause(performance.now(), true); setMicActive(active); }} />
+            : mode === 3 ? <Microphone onTraining={value => { setMicTraining(value); if (!value) { setHint(false); setCheatOpen(false); } }} onEnableSound={() => { setSound(true); if (volume === 0) setVolume(50); }} onReady={ready => { if (!ready) recognitionClock.current.pause(performance.now()); setMicReady(ready); }} target={NOTES[index].midi - 12} sound={sound} volume={volume} paused={needsAudioChoice || audioPreview > 0 || cheatOpen || hint} onMatch={() => choose(index)} onWrong={() => { micWrong.current = true; }} onActive={active => { if (!active && micActive) recognitionClock.current.pause(performance.now(), true); setMicActive(active); }} />
             : mode === 1 ? <Fretboard target={answer !== null || hint ? index : null} answer={answer} onChoose={choose} firstButton={firstAnswer} />
+            : staffGame === 'point' ? null
             : <div className="staff-choices">{noteChoices.map((i, position) => <button ref={position === 0 ? firstAnswer : undefined} key={i} disabled={answer !== null} className={`answer staff-choice ${answer !== null && i === index ? 'correct' : ''} ${answer === i && i !== index ? 'incorrect' : ''}`} onClick={() => choose(i)} aria-label={`Вариант ${position + 1}. ${NOTES[i].hint}`}><Staff index={i} reveal={answer !== null} /><span>{answer !== null && i === index ? '✓ Верная нота' : `Вариант ${position + 1}`}</span></button>)}</div>}
             <div className="feedback" aria-live="polite">{answer !== null ? <><div className={(mode === 0 ? isCorrectAnswer(answer, index) : answer === index) ? 'feedback-title success' : 'feedback-title'}>{(mode === 0 ? isCorrectAnswer(answer, index) : answer === index) ? 'Верно, это ' : 'Это '}{NOTES[index].name} ({NOTES[index].letter}){(mode === 0 ? isCorrectAnswer(answer, index) : answer === index) ? '!' : '. Запомним вместе.'}</div><p>{NOTES[index].hint} {guitarPositions(NOTES[index].midi)}.</p><div className="feedback-actions"><button className="text-button" disabled={!sound || mode === 3} onClick={() => void play()}>♫ Послушать</button><button ref={nextButton} className="primary" onClick={next}>{round === 9 ? 'К результатам' : 'Следующая нота'} <span>→</span></button></div></> : <><button className="text-button hint-button" onClick={() => { usedHint.current = true; setHint(v => !v); }} aria-expanded={hint}>ⓘ {hint ? 'Скрыть подсказку' : 'Нужна подсказка?'}</button>{hint ? <p>{NOTES[index].hint} Это {NOTES[index].name} ({NOTES[index].letter}). {guitarPositions(NOTES[index].midi)}.</p> : <p className="encouragement">Без спешки. Здесь можно ошибаться.</p>}</>}</div>
           </>}
@@ -341,17 +400,18 @@ function Trainer({ mode, onModeChange }: { mode: number; onModeChange: (mode: nu
             <p className="knowledge-footnote">Пустые места — ноты с диезами или бемолями, их пока пропускаем. Нумерация струн идёт от тонкой к толстой.</p>
           </div>}
           <p className="cheatsheet-intro">Скрипичный ключ · Гитара · первые три лада. Линейки считаем снизу вверх. Запись на октаву выше звучания, как в гитарных партиях. Открытая струна — лад 0.</p>
-          <div className="cheatsheet-notes">{GUITAR_NOTES.map(i => <article key={NOTES[i].midi}>
+          {mode === 0 && <div className="cheat-view-switch" role="group" aria-label="Вид шпаргалки"><button aria-pressed={cheatView === 'staff'} onClick={() => setCheatView('staff')}>Общий стан</button><button aria-pressed={cheatView === 'cards'} onClick={() => setCheatView('cards')}>Карточки</button></div>}
+          {mode === 0 && cheatView === 'staff' ? <ReferenceStaff /> : <div className="cheatsheet-notes">{GUITAR_NOTES.map(i => <article key={NOTES[i].midi}>
             <Staff index={i} reveal />
             <h3>{NOTES[i].name} <span>({NOTES[i].letter})</span></h3>
             <p>{guitarPositions(NOTES[i].midi)}</p><p>{NOTES[i].hint}</p>
-          </article>)}</div>
+          </article>)}</div>}
           <p className="cheatsheet-tip">Буквы идут от ля: A — Ля, B — Си, C — До, D — Ре, E — Ми, F — Фа, G — Соль.</p>
           <p className="knowledge-footnote">Если открыть шпаргалку во время задания, ответ будет учтён с подсказкой, даже если потом её закрыть.</p>
         </div>
       </section>
       <details className="knowledge compact-knowledge">
-        <summary><span>Мой прогресс · {MODES[mode].label} <small>Хорошо помню: {GUITAR_NOTES.filter(i => mastery(progress.notes[i]).level === 'good').length} из {count} нот</small></span><Chevron /></summary>
+        <summary><span>Мой прогресс · {MODES[mode].label}{mode === 2 && (staffGame === 'point' ? ' · Указать на стане' : ' · 4 варианта')} <small>Хорошо помню: {GUITAR_NOTES.filter(i => mastery(progress.notes[i]).level === 'good').length} из {count} нот</small></span><Chevron /></summary>
         <p className="knowledge-description">Полосы показывают точность последних 10 ответов без подсказки. Оценка появляется после 5 самостоятельных попыток: от 80% — «Помню хорошо», от 50% — «Закрепляю», ниже — «Стоит повторить». Скорость — среднее последних 10 верных ответов без подсказок и перерывов.</p>
         {progress.total > progress.notes.reduce((sum, n) => sum + n.correct + n.wrong + n.assisted, 0) && <p className="migration-note">Общая статистика сохранена. Подробный прогресс по нотам собирается с этого обновления.</p>}
         <div className="knowledge-grid">{GUITAR_NOTES.map(i => { const note = NOTES[i];

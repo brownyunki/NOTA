@@ -23,3 +23,23 @@ test('noise-dominated calibration is rejected and loud signals retain a margin',
   assert.ok(config.silence < config.detection);
   assert.ok(config.detection < 0.1);
 });
+
+test('two-string calibration uses quieter treble and requires both strings above noise', () => {
+  const bassOnly = sensitivity(0.0001, 0.08);
+  const both = sensitivity(0.0001, 0.08, 0.004);
+  assert.ok(both.detection < bassOnly.detection);
+  assert.equal(both.reference, 0.004);
+  assert.equal(both.noise, 0.0001);
+  assert.equal(sensitivity(0.001, 0.08, 0.002), null);
+  assert.equal(sensitivity(0.001, 0.002, 0.08), null);
+});
+
+test('quiet first-string G is recognized after calibration on a louder low E', () => {
+  const config = sensitivity(0.0001, 0.08);
+  const data = Float32Array.from({ length: 4096 }, (_, i) => {
+    const t = i / 48000;
+    return (0.004 * Math.sin(2 * Math.PI * 391.995 * t) + 0.002 * Math.sin(4 * Math.PI * 391.995 * t)) * Math.exp(-t * 3);
+  });
+  assert.equal(detectPitch(data, 48000, 0.08 * 0.1), null);
+  assert.equal(detectPitch(data, 48000, config.detection).midi, 67);
+});

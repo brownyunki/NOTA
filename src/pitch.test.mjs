@@ -27,3 +27,12 @@ test('reports detuning and distinguishes octaves', () => {
   assert.ok(Math.abs(low.cents - 25) < 5);
   assert.equal(detectPitch(signal(52, 48000), 48000).midi, 52);
 });
+
+test('broadband noise is not promoted to a confident pitch', () => {
+  let seed = 42;
+  const data = Float32Array.from({ length: 4096 }, () => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return (seed / 4294967296 - 0.5) * 0.1;
+  });
+  assert.equal(detectPitch(data, 48000), null);
+});

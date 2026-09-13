@@ -2,13 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import { detectPitch, heardName } from './pitch';
 import { SilenceGate } from './silence-gate';
 import { sensitivity } from './calibration';
+// Memory only: shared by workouts and modes, cleared by a page refresh.
+let visitCalibration: NonNullable<ReturnType<typeof sensitivity>> | null = null;
 
-type Props = { target: number; paused: boolean; sound: boolean; volume: number; onEnableSound: () => void; onMatch: () => void; onWrong: () => void; onActive: (active: boolean) => void; onReady: (ready: boolean) => void };
+type Props = { target: number; paused: boolean; sound: boolean; volume: number; onTraining: (training: boolean) => void; onEnableSound: () => void; onMatch: () => void; onWrong: () => void; onActive: (active: boolean) => void; onReady: (ready: boolean) => void };
 export function Microphone(props: Props) {
   const latest = useRef(props); latest.current = props;
   const [active, setActive] = useState(false);
   const [pending, setPending] = useState(false);
-  const [message, setMessage] = useState('Включи микрофон и сыграй одну струну.');
+  const [message, setMessage] = useState('Включи микрофон и сыграй ноту на экране.');
   const [level, setLevel] = useState(0);
   const [error, setError] = useState('');
   const [status, setStatus] = useState<'listening' | 'waiting' | 'wrong' | 'correct'>('listening');
@@ -16,12 +18,17 @@ export function Microphone(props: Props) {
   const wrongUntil = useRef(0);
   const matchTimeout = useRef<number | undefined>(undefined);
   const notificationGain = useRef<GainNode | null>(null);
-  const [calibrating, setCalibrating] = useState(true);
-  const calibration = useRef({ phase: 'noise', noise: [] as number[], signal: [] as number[], noiseLevel: 0.0001 });
-  const thresholds = useRef({ detection: 0.006, silence: 0.006, reference: 0.02 });
+  const [calibrating, setCalibrating] = useState(visitCalibration === null);
+  const [phase, setPhase] = useState<'noise' | 'string' | 'damp' | 'high' | 'ready'>(visitCalibration ? 'ready' : 'noise');
+  const [training, setTraining] = useState(false);
+  const trainingRef = useRef(false);
+  const calibration = useRef({ phase: 'noise', noise: [] as number[], signal: [] as number[], noiseLevel: 0.0001, bassLevel: 0 });
+  const thresholds = useRef({ detection: 0.006, silence: 0.006, reference: 0.02, noise: 0.0001 });
   function recalibrate() {
+    visitCalibration = null;
+    trainingRef.current = false; setTraining(false); latest.current.onTraining(false); setPhase('noise');
     clearTimeout(matchTimeout.current);
-    calibration.current = { phase: 'noise', noise: [], signal: [], noiseLevel: 0.0001 };
+    calibration.current = { phase: 'noise', noise: [], signal: [], noiseLevel: 0.0001, bassLevel: 0 };
     setCalibrating(true); silenceGate.current.reset(); latest.current.onReady(false);
     stable.current.midi = -1;
     stable.current.matched = false;
@@ -35,11 +42,10 @@ export function Microphone(props: Props) {
     const output = ctx.createGain(); output.gain.value = current.volume / 100;
     notificationGain.current = output; output.connect(ctx.destination);
     const tone = ctx.createOscillator(); const envelope = ctx.createGain();
-    tone.type = 'triangle'; tone.frequency.setValueAtTime(880, ctx.currentTime);
-    tone.frequency.setValueAtTime(1318.5, ctx.currentTime + 0.14);
+    tone.type = 'sine'; tone.frequency.setValueAtTime(659.25, ctx.currentTime);
+    tone.frequency.linearRampToValueAtTime(783.99, ctx.currentTime + 0.18);
     envelope.gain.setValueAtTime(0, ctx.currentTime);
-    envelope.gain.linearRampToValueAtTime(0.28, ctx.currentTime + 0.012);
-    envelope.gain.setValueAtTime(0.2, ctx.currentTime + 0.14);
+    envelope.gain.linearRampToValueAtTime(0.18, ctx.currentTime + 0.035);
     envelope.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.38);
     tone.connect(envelope); envelope.connect(output);
     tone.onended = () => { tone.disconnect(); envelope.disconnect(); output.disconnect(); if (notificationGain.current === output) notificationGain.current = null; };
@@ -92,7 +98,9 @@ export function Microphone(props: Props) {
       source.connect(analyser);
       const data = new Float32Array(analyser.fftSize);
       const rate = ctx.sampleRate;
-      recalibrate();
+      if (visitCalibration) {
+        thresholds.current = visitCalibration; calibration.current.phase = 'done'; setCalibrating(false); setPhase('ready');
+      } else recalibrate();
       silenceGate.current.reset(); latest.current.onReady(false);
       stable.current = { midi: -1, since: 0, target: latest.current.target, matched: false, readyAt: performance.now() + 400 };
       const interval = window.setInterval(() => {
@@ -112,24 +120,40 @@ export function Microphone(props: Props) {
             const sorted = [...setup.noise].sort((a, b) => a - b);
             setup.noiseLevel = Math.max(0.00001, sorted[Math.floor(sorted.length * 0.75)]);
             setup.phase = 'string';
+            setPhase('string');
           }
           return;
         }
-        if (setup.phase === 'string') {
+        if (setup.phase === 'damp') {
+          setMessage('Шестая струна измерена. Приглуши её перед переходом к первой струне.');
+          if (silenceGate.current.update(rms, now, Math.max(0.00003, setup.noiseLevel * 1.8, setup.bassLevel * 0.015))) {
+            setup.phase = 'high'; setPhase('high');
+          }
+          return;
+        }
+        if (setup.phase === 'string' || setup.phase === 'high') {
+          const high = setup.phase === 'high';
+          const expected = high ? 64 : 40;
+          const position = high ? '1-я, самая тонкая струна' : '6-я, самая толстая струна';
           const sample = detectPitch(data, rate, Math.max(0.00003, setup.noiseLevel * 2));
-          if (sample?.midi === 40 && Math.abs(sample.cents) <= 45) setup.signal.push(rms);
+          if (sample?.midi === expected && Math.abs(sample.cents) <= 45) setup.signal.push(rms);
           else setup.signal = [];
-          setMessage(sample && sample.midi !== 40 ? `Слышу ${heardName(sample.midi)}. Для настройки сыграй Ми: 6-я, самая толстая струна, открытая (лад 0).` : 'Сыграй Ми: 6-я, самая толстая струна, открытая (лад 0). Играй с обычной комфортной громкостью.');
+          setMessage(sample && sample.midi !== expected ? `Распознана другая нота или октава: ${heardName(sample.midi)}. Сыграй Ми: ${position}, открытая (лад 0).` : `Сыграй Ми: ${position}, открытая (лад 0). Играй с обычной комфортной громкостью.`);
           if (setup.signal.length >= 5) {
             const measured = [...setup.signal].sort((a, b) => a - b)[2];
-            const tuned = sensitivity(setup.noiseLevel, measured);
+            const tuned = sensitivity(setup.noiseLevel, high ? setup.bassLevel : measured, measured);
             if (tuned) {
-              thresholds.current = tuned; setup.phase = 'done'; setCalibrating(false);
+              if (!high) {
+                setup.bassLevel = measured; setup.signal = []; setup.phase = 'damp';
+                setPhase('damp'); silenceGate.current.reset(); return;
+              }
+              thresholds.current = tuned; visitCalibration = tuned; setup.phase = 'done'; setCalibrating(false); setPhase('ready');
               silenceGate.current.reset(); setMessage('Чувствительность настроена! Приглуши струну, затем начнём тренировку.');
             } else setMessage('Струну трудно отличить от фона. Поднеси телефон ближе или убери фоновый шум и повтори настройку.');
           }
           return;
         }
+        if (!trainingRef.current) { setMessage('Микрофон настроен. Можно начинать тренировку.'); return; }
         if (!silenceGate.current.ready) {
           stable.current.midi = -1;
           if (silenceGate.current.update(rms, now, thresholds.current.silence)) {
@@ -140,7 +164,7 @@ export function Microphone(props: Props) {
           return;
         }
         const pitch = detectPitch(data, rate, thresholds.current.detection);
-        if (!pitch) { stable.current.midi = -1; if (now < wrongUntil.current) return; setStatus('listening'); setMessage(rms > thresholds.current.detection ? 'Слышу звук, но нота неясна. Сыграй одну струну, остальные приглуши.' : 'Слушаю… Сыграй одну струну.'); return; }
+        if (!pitch) { stable.current.midi = -1; if (now < wrongUntil.current) return; setStatus('listening'); setMessage(rms >= thresholds.current.detection ? 'Высота не определена. Звук слышен, но нота неустойчива. Приглуши остальные струны и сыграй ноту на экране.' : rms > thresholds.current.noise * 1.5 ? 'Слишком тихо. Поднеси телефон ближе к гитаре или повтори настройку чувствительности.' : 'Слушаю… Сыграй ноту на экране.'); return; }
         if (pitch.midi !== stable.current.midi) { stable.current.midi = pitch.midi; stable.current.since = now; return; }
         if (now - stable.current.since < 220) return;
         if (pitch.midi === current.target && Math.abs(pitch.cents) <= 40) {
@@ -155,7 +179,7 @@ export function Microphone(props: Props) {
         } else {
           setStatus('wrong'); wrongUntil.current = now + 1000;
           const octave = pitch.midi % 12 === current.target % 12 && pitch.midi !== current.target;
-          setMessage(pitch.midi === current.target ? `Распознано: ${heardName(pitch.midi)}, но струна звучит ${pitch.cents > 0 ? 'выше' : 'ниже'} нужного. Проверь настройку.` : `Распознано: ${heardName(pitch.midi)}. ${octave ? 'Название верное, но нужна другая высота — проверь струну.' : 'Это другая нота. Попробуй другой лад или струну.'}`);
+          setMessage(pitch.midi === current.target ? `Распознано: ${heardName(pitch.midi)}, но струна звучит ${pitch.cents > 0 ? 'выше' : 'ниже'} нужного. Проверь настройку.` : `Распознана другая нота или октава: ${heardName(pitch.midi)}. ${octave ? 'Название верное, но нужна другая высота — проверь струну.' : 'Попробуй другой лад или струну.'}`);
           current.onWrong();
         }
       }, 80);
@@ -175,10 +199,23 @@ export function Microphone(props: Props) {
       setError(name === 'NotAllowedError' ? 'Доступ к микрофону не разрешён. Разреши его в настройках сайта в браузере и попробуй снова.' : name === 'NotFoundError' ? 'Микрофон не найден. Проверь устройство.' : 'Не удалось включить микрофон. Закрой другие приложения со звуком и попробуй снова.');
     }
   }
+  const trebleStep = phase === 'high' || phase === 'damp';
+  const calibrationString = trebleStep ? 1 : 6;
   return <section className={`microphone-panel mic-${error ? 'wrong' : status}`} aria-label="Микрофон">
-    {active && calibrating && <div className="calibration-title"><strong>Настроим микрофон под твою гитару</strong><span>Ми (E) · 6-я струна · открытая, лад 0</span><small>Сначала тишина, затем один щипок обычной громкости. Это не задание и не влияет на результат.</small></div>}
+    {!training && <div className="calibration-title">
+      <div className="eyebrow">ПОДГОТОВКА МИКРОФОНА</div>
+      <h2>{phase === 'ready' ? 'Микрофон настроен' : phase === 'noise' ? 'Сначала — немного тишины' : trebleStep ? 'Шаг 2: открытая первая Ми' : 'Шаг 1: открытая шестая Ми'}</h2>
+      <span>{phase === 'ready' ? 'Чувствительность сохранена до перезагрузки страницы.' : phase === 'noise' ? 'Приглуши все струны. Измерим фоновый шум.' : trebleStep ? 'Ми (E) · самая тонкая струна · лад 0' : 'Ми (E) · самая толстая струна · лад 0'}</span>
+      {(phase === 'string' || trebleStep) && <div className="calibration-strings" role="img" aria-label={`${calibrationString}-я струна. Играть открытой, не зажимая лады`}>{[1, 2, 3, 4, 5, 6].map(n => <div key={n} className={n === calibrationString ? 'target-string' : ''}><span>{n}</span><i style={{ height: `${n * 0.4 + 0.5}px` }} />{n === calibrationString && <b>● 0</b>}</div>)}</div>}
+      <small>{(phase === 'string' || trebleStep) ? 'Один щипок привычной громкости. Остальные струны приглуши.' : 'Это подготовка чувствительности микрофона, не настройка струн и не задание.'}</small>
+    </div>}
     <div className="mic-controls"><button className="primary" onClick={active || pending ? stop : () => void start()}>{pending ? 'Отменить подключение' : active ? 'Выключить микрофон' : 'Включить микрофон'}</button><div className="mic-level" aria-label="Уровень входящего звука"><div style={{ width: `${level}%` }} /></div></div>
     {error ? <p role="alert">{error}</p> : <p role="status"><span className="mic-status-icon" aria-hidden="true">{status === 'wrong' ? '↔' : status === 'correct' ? '✓' : '●'}</span>{message}</p>}
+    {!training && active && !calibrating && <button className="primary" onClick={() => {
+      trainingRef.current = true; setTraining(true); latest.current.onTraining(true);
+      silenceGate.current.reset(); stable.current.midi = -1;
+      setMessage('Приглуши струны. Сейчас появится первая нота.');
+    }}>Начать тренировку →</button>}
     <div className="mic-settings">
       {active && <button className="text-button" onClick={recalibrate}>Настроить чувствительность заново</button>}
       {(!props.sound || props.volume === 0) && <button className="text-button" onClick={props.onEnableSound}>Включить звук правильного ответа</button>}
