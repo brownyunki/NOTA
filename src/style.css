@@ -76,3 +76,28 @@ footer{justify-content:center;align-items:center;text-align:center;font-size:11p
 
 .mic-preparing>.exercise-top,.mic-preparing>.progress-track,.mic-preparing>.question,.mic-preparing>.staff,.mic-preparing>.notation-label,.mic-preparing>.feedback{display:none}.calibration-title h2{font-size:22px;line-height:1.4;margin:8px 0}.calibration-strings{max-width:320px;background:#fffefa;border:1px solid #dbe1d2;border-radius:12px;padding:12px;margin:10px 0}.calibration-strings>div{position:relative;display:flex;align-items:center;gap:12px;height:25px;color:#a0a792}.calibration-strings span{font-size:10px;width:12px}.calibration-strings i{flex:1;background:currentColor}.calibration-strings .target-string{color:#365d2b}.calibration-strings b{position:absolute;left:42px;background:#e0ecd5;padding:2px 7px;border-radius:8px;font-size:12px}
 
+
+.calibration-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.calibration-heading h2{margin:8px 0}.recalibrate-button{display:inline-flex;align-items:center;gap:7px;min-height:36px;max-width:190px;text-align:left;font-size:10px}.recalibrate-button svg{flex-shrink:0}.mic-preview-notes{margin:0 0 18px}.mic-preview-notes>div{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}.mic-preview-notes>div>span{font-size:11px;background:#fffefa;border:1px solid #dbe3d2;border-radius:8px;padding:7px 9px;color:#536b43}
+
+
+.mic-toggle{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:42px;padding:10px 12px;border:1px solid #bfcab4;border-radius:10px;background:transparent;color:#627453;font-size:11px}.mic-toggle svg{flex-shrink:0}.mic-toggle.is-active{border-color:#8fa67b;color:#47643a}.microphone-panel>.primary{width:100%;margin:18px 0 8px;font-size:13px;min-height:48px}
+
+
+.mic-compact-status{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;color:#627b50;font-size:11px}.mic-compact-status small{font-size:9px}
+
+.staff-picker-controls{display:flex;justify-content:center;align-items:center;gap:8px;margin-top:8px}.staff-picker-controls .answer{min-width:44px;min-height:44px;padding:8px;font-size:20px}.staff-picker-controls .primary{min-height:44px;padding:10px 18px}.staff-picker-controls button:disabled{opacity:.45}
+.version-button{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:44px;padding:6px 10px;border:0;background:transparent;color:#6b7a5e;font-size:11px}
+.version-dot{width:7px;height:7px;border-radius:50%;background:#bd704c}
+.release-dialog{box-sizing:border-box;width:calc(100% - 32px);max-width:560px;max-height:80dvh;overflow:auto;border:1px solid #dfe2d8;border-radius:20px;padding:24px;background:#fffefa;color:#303c35;text-align:left;font-size:13px;line-height:1.7;box-shadow:0 20px 80px #263b3326}
+.release-dialog::backdrop{background:#243b3466;backdrop-filter:blur(4px)}
+.release-heading{display:flex;justify-content:space-between;align-items:center;gap:12px}.release-heading h2{margin:0;font-size:22px}.release-heading button{min-width:44px;min-height:44px}.release-dialog article{border-top:1px solid #e2e3da;margin-top:18px;padding-top:12px}.release-dialog h3{font-size:14px;color:#557b37}.release-dialog h4{margin:16px 0 6px;font-size:13px}.release-dialog ul{margin:0;padding-left:20px}.release-dialog li{margin:7px 0}
+.release-dialog{padding:0;overflow:hidden}.release-dialog[open]{display:flex;flex-direction:column}.release-dialog .release-heading{flex-shrink:0;padding:12px 24px;background:#fffefa;border-bottom:1px solid #e2e3da}.release-content{min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:0 24px 24px}.release-content article:first-child{border-top:0;margin-top:0}
+@media(max-width:760px){
+  .shell>header{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"brand sound" "volume choice";gap:8px 16px;height:auto;padding:16px 0 10px}
+  .shell>header .brand{grid-area:brand;justify-self:start}
+  .shell>header .sound{grid-area:sound;justify-self:end;min-height:44px}
+  .shell>header .volume-control{grid-area:volume;display:flex;align-items:center;justify-content:flex-start;gap:8px;width:100%;min-width:0;margin:0;min-height:44px}
+  .shell>header .volume-control input{flex:1;width:0;min-width:0;min-height:44px;margin:0}
+  .shell>header .volume-control output{flex:0 0 32px;text-align:right;font-variant-numeric:tabular-nums}
+  .shell>header .audio-choice-button{grid-area:choice;justify-self:end;margin:0;padding:9px 0 9px 8px}
+}

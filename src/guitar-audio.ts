@@ -21,20 +21,30 @@ export function guitarBuffer(ctx: AudioContext, midi: number): AudioBuffer {
     };
   }).filter(h => h.frequency < ctx.sampleRate * 0.45);
 
+  // Advance each decaying oscillator by recurrence instead of evaluating
+  // sin/exp millions of times on the first tap of each note.
+  for (const h of harmonics) {
+    const angle = 2 * Math.PI * h.frequency / ctx.sampleRate;
+    const decay = Math.exp(-h.decay / ctx.sampleRate);
+    const realStep = Math.cos(angle) * decay, imaginaryStep = Math.sin(angle) * decay;
+    let real = h.amplitude * Math.cos(h.phase), imaginary = h.amplitude * Math.sin(h.phase);
+    for (let i = 0; i < data.length; i++) {
+      data[i] += imaginary;
+      const nextReal = real * realStep - imaginary * imaginaryStep;
+      imaginary = imaginary * realStep + real * imaginaryStep;
+      real = nextReal;
+    }
+  }
   let noise = 0;
   let peak = 0;
   for (let i = 0; i < data.length; i++) {
     const t = i / ctx.sampleRate;
     const attack = Math.min(1, t / 0.003);
     const release = Math.min(1, (duration - t) / 0.08);
-    let sample = 0;
-    for (const h of harmonics) {
-      sample += h.amplitude * Math.sin(2 * Math.PI * h.frequency * t + h.phase) * Math.exp(-t * h.decay);
-    }
     noise = noise * 0.65 + (Math.random() * 2 - 1) * 0.35;
     const pick = noise * 0.13 * Math.exp(-t * 95);
     const body = (Math.sin(2 * Math.PI * 105 * t) + 0.5 * Math.sin(2 * Math.PI * 210 * t)) * 0.045 * Math.exp(-t * 22);
-    data[i] = (sample + pick + body) * attack * release;
+    data[i] = (data[i] + pick + body) * attack * release;
     peak = Math.max(peak, Math.abs(data[i]));
   }
   if (peak > 0) for (let i = 0; i < data.length; i++) data[i] *= 0.38 / peak;

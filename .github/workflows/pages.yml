@@ -23,7 +23,7 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Test
-        run: node --test src/progress.test.mjs src/training.test.mjs src/timing.test.mjs src/pitch.test.mjs src/silence-gate.test.mjs src/calibration.test.mjs
+        run: npm run test
       - name: Build for /NOTA/
         run: npm run build -- --base=/NOTA/
       - uses: actions/upload-pages-artifact@v3

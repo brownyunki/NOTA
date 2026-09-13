@@ -5,7 +5,7 @@ import { sensitivity } from './calibration';
 // Memory only: shared by workouts and modes, cleared by a page refresh.
 let visitCalibration: NonNullable<ReturnType<typeof sensitivity>> | null = null;
 
-type Props = { target: number; paused: boolean; sound: boolean; volume: number; onTraining: (training: boolean) => void; onEnableSound: () => void; onMatch: () => void; onWrong: () => void; onActive: (active: boolean) => void; onReady: (ready: boolean) => void };
+type Props = { target: number; completed: boolean; paused: boolean; sound: boolean; volume: number; onTraining: (training: boolean) => void; onEnableSound: () => void; onMatch: () => void; onWrong: () => void; onActive: (active: boolean) => void; onReady: (ready: boolean) => void };
 export function Microphone(props: Props) {
   const latest = useRef(props); latest.current = props;
   const [active, setActive] = useState(false);
@@ -13,6 +13,8 @@ export function Microphone(props: Props) {
   const [message, setMessage] = useState('Включи микрофон и сыграй ноту на экране.');
   const [level, setLevel] = useState(0);
   const [error, setError] = useState('');
+  const [heardNotes, setHeardNotes] = useState<string[]>([]);
+  const previewNote = useRef<number | null>(null);
   const [status, setStatus] = useState<'listening' | 'waiting' | 'wrong' | 'correct'>('listening');
   const silenceGate = useRef(new SilenceGate());
   const wrongUntil = useRef(0);
@@ -25,6 +27,7 @@ export function Microphone(props: Props) {
   const calibration = useRef({ phase: 'noise', noise: [] as number[], signal: [] as number[], noiseLevel: 0.0001, bassLevel: 0 });
   const thresholds = useRef({ detection: 0.006, silence: 0.006, reference: 0.02, noise: 0.0001 });
   function recalibrate() {
+    setHeardNotes([]); previewNote.current = null;
     visitCalibration = null;
     trainingRef.current = false; setTraining(false); latest.current.onTraining(false); setPhase('noise');
     clearTimeout(matchTimeout.current);
@@ -58,6 +61,7 @@ export function Microphone(props: Props) {
   const generation = useRef(0);
   const stable = useRef({ midi: -1, since: 0, target: props.target, matched: false, readyAt: 0 });
   function stop() {
+    setMessage('Микрофон выключен. Чтобы продолжить, включи его.');
     silenceGate.current.reset(); latest.current.onReady(false);
     clearTimeout(matchTimeout.current);
     notificationGain.current = null;
@@ -105,13 +109,15 @@ export function Microphone(props: Props) {
       stable.current = { midi: -1, since: 0, target: latest.current.target, matched: false, readyAt: performance.now() + 400 };
       const interval = window.setInterval(() => {
         const current = latest.current;
-        if (current.paused || document.hidden) { silenceGate.current.reset(); current.onReady(false); stable.current.midi = -1; setStatus('listening'); setMessage('Пауза — закрой подсказки и окно настроек, затем приглуши струны.'); return; }
-        const now = performance.now();
-        if (now < stable.current.readyAt || stable.current.matched) return;
+        // Keep the input meter live even while answer checking is paused.
         analyser.getFloatTimeDomainData(data);
         let energy = 0; for (const value of data) energy += value * value;
         const rms = Math.sqrt(energy / data.length);
         setLevel(Math.min(100, rms / thresholds.current.reference * 80));
+        if (current.completed) { silenceGate.current.reset(); current.onReady(false); setStatus('waiting'); setMessage('Тренировка завершена. Микрофон включён, проверка нот на паузе. Можно начать ещё 10 нот.'); return; }
+        if (current.paused || document.hidden) { silenceGate.current.reset(); current.onReady(false); stable.current.midi = -1; setStatus('listening'); setMessage('Пауза — закрой подсказки и окно настроек, затем приглуши струны.'); return; }
+        const now = performance.now();
+        if (now < stable.current.readyAt || stable.current.matched) return;
         const setup = calibration.current;
         if (setup.phase === 'noise') {
           setup.noise.push(rms);
@@ -153,7 +159,25 @@ export function Microphone(props: Props) {
           }
           return;
         }
-        if (!trainingRef.current) { setMessage('Микрофон настроен. Можно начинать тренировку.'); return; }
+        if (!trainingRef.current) {
+          const heard = detectPitch(data, rate, thresholds.current.detection);
+          setStatus('listening');
+          if (!heard) {
+            stable.current.midi = -1;
+            if (rms < thresholds.current.silence) previewNote.current = null;
+            setMessage(rms >= thresholds.current.detection ? 'Звук слышен, но высота пока не определена. Сыграй одну ноту.' : rms > thresholds.current.noise * 1.5 ? 'Слишком тихо. Попробуй поднести телефон ближе.' : 'Свободная проверка: сыграй любую струну, и здесь появится распознанная нота.');
+            return;
+          }
+          if (stable.current.midi !== heard.midi) { stable.current.midi = heard.midi; stable.current.since = now; return; }
+          if (now - stable.current.since < 220) return;
+          const name = `${heardName(heard.midi)} · ${Math.round(heard.frequency)} Гц`;
+          setMessage(`Слышу: ${name}`);
+          if (previewNote.current !== heard.midi) {
+            previewNote.current = heard.midi;
+            setHeardNotes(notes => [...notes, name].slice(-6));
+          }
+          return;
+        }
         if (!silenceGate.current.ready) {
           stable.current.midi = -1;
           if (silenceGate.current.update(rms, now, thresholds.current.silence)) {
@@ -201,23 +225,34 @@ export function Microphone(props: Props) {
   }
   const trebleStep = phase === 'high' || phase === 'damp';
   const calibrationString = trebleStep ? 1 : 6;
+  const recalibrateButton = <button className="text-button recalibrate-button" onClick={recalibrate}><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5" /><path d="M6 7a7 7 0 0 1 12-1l2 3M4 15l2 3a7 7 0 0 0 12-1" /></svg><span>Настроить чувствительность заново</span></button>;
   return <section className={`microphone-panel mic-${error ? 'wrong' : status}`} aria-label="Микрофон">
+    {training && <div className="mic-compact-status"><span>✓ Микрофон настроен</span><button className="text-button" onClick={() => {
+      clearTimeout(matchTimeout.current);
+      trainingRef.current = false; setTraining(false);
+      silenceGate.current.reset(); latest.current.onReady(false);
+      stable.current = { midi: -1, since: 0, target: props.target, matched: false, readyAt: performance.now() + 500 };
+      setHeardNotes([]); previewNote.current = null;
+      setStatus('waiting'); setMessage(active ? 'Свободный режим. Приглуши струны, затем сыграй любую ноту.' : 'Микрофон выключен. Включи его, чтобы играть свободно.');
+      latest.current.onTraining(false);
+    }}>Свободный режим</button></div>}
     {!training && <div className="calibration-title">
       <div className="eyebrow">ПОДГОТОВКА МИКРОФОНА</div>
-      <h2>{phase === 'ready' ? 'Микрофон настроен' : phase === 'noise' ? 'Сначала — немного тишины' : trebleStep ? 'Шаг 2: открытая первая Ми' : 'Шаг 1: открытая шестая Ми'}</h2>
+      <div className="calibration-heading"><h2>{phase === 'ready' ? 'Микрофон настроен' : phase === 'noise' ? 'Сначала — немного тишины' : trebleStep ? 'Шаг 2: открытая первая Ми' : 'Шаг 1: открытая шестая Ми'}</h2>{phase === 'ready' && recalibrateButton}</div>
       <span>{phase === 'ready' ? 'Чувствительность сохранена до перезагрузки страницы.' : phase === 'noise' ? 'Приглуши все струны. Измерим фоновый шум.' : trebleStep ? 'Ми (E) · самая тонкая струна · лад 0' : 'Ми (E) · самая толстая струна · лад 0'}</span>
       {(phase === 'string' || trebleStep) && <div className="calibration-strings" role="img" aria-label={`${calibrationString}-я струна. Играть открытой, не зажимая лады`}>{[1, 2, 3, 4, 5, 6].map(n => <div key={n} className={n === calibrationString ? 'target-string' : ''}><span>{n}</span><i style={{ height: `${n * 0.4 + 0.5}px` }} />{n === calibrationString && <b>● 0</b>}</div>)}</div>}
       <small>{(phase === 'string' || trebleStep) ? 'Один щипок привычной громкости. Остальные струны приглуши.' : 'Это подготовка чувствительности микрофона, не настройка струн и не задание.'}</small>
     </div>}
-    <div className="mic-controls"><button className="primary" onClick={active || pending ? stop : () => void start()}>{pending ? 'Отменить подключение' : active ? 'Выключить микрофон' : 'Включить микрофон'}</button><div className="mic-level" aria-label="Уровень входящего звука"><div style={{ width: `${level}%` }} /></div></div>
+    <div className="mic-controls"><button data-enter-start={!active && !pending && !props.completed && !props.paused ? "true" : undefined} aria-keyshortcuts={!active && !pending ? "Enter" : undefined} className={`mic-toggle ${active ? 'is-active' : ''}`} aria-pressed={active} onClick={active || pending ? stop : () => void start()}><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3" /><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8" />{!active && <path d="m3 3 18 18" />}</svg><span>{pending ? 'Отменить подключение' : active ? 'Выключить микрофон' : 'Включить микрофон'}</span></button><div className="mic-level" aria-label="Уровень входящего звука"><div style={{ width: `${level}%` }} /></div></div>
     {error ? <p role="alert">{error}</p> : <p role="status"><span className="mic-status-icon" aria-hidden="true">{status === 'wrong' ? '↔' : status === 'correct' ? '✓' : '●'}</span>{message}</p>}
-    {!training && active && !calibrating && <button className="primary" onClick={() => {
+    {!training && phase === 'ready' && <div className="mic-preview-notes"><small>Последние звуки</small><div>{heardNotes.map((note, i) => <span key={i}>{note}</span>)}</div></div>}
+    {!training && active && !calibrating && <button data-enter-start={!props.paused ? "true" : undefined} aria-keyshortcuts="Enter" className="primary" onClick={() => {
       trainingRef.current = true; setTraining(true); latest.current.onTraining(true);
       silenceGate.current.reset(); stable.current.midi = -1;
       setMessage('Приглуши струны. Сейчас появится первая нота.');
     }}>Начать тренировку →</button>}
     <div className="mic-settings">
-      {active && <button className="text-button" onClick={recalibrate}>Настроить чувствительность заново</button>}
+      {active && !props.completed && (training || phase !== 'ready') && recalibrateButton}
       {(!props.sound || props.volume === 0) && <button className="text-button" onClick={props.onEnableSound}>Включить звук правильного ответа</button>}
     </div>
     <small>Звук обрабатывается на устройстве и не записывается. Можно искать нужную ноту без ограничения попыток.</small>
