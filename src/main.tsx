@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import './style.css';
 import { guitarBuffer } from './guitar-audio';
 import { Microphone } from './Microphone';
+import { Piano } from './Piano';
 import { emptyNotes, mastery, readNotes, recordNote, type NoteProgress } from './progress';
 import { GUITAR_NOTES, guitarPositions, pickNote, isCorrectAnswer, fretMidi, staffChoices } from './training';
 import { emptySpeed, readSpeed, recordSpeed, sessionTiming, seconds, RecognitionClock, type SpeedProgress, type TimedAnswer } from './timing';
@@ -121,10 +122,10 @@ function Trainer({ mode, onModeChange }: { mode: number; onModeChange: (mode: nu
   const [sound, setSound] = useState(audioSettings?.enabled ?? false);
   const [volume, setVolume] = useState(audioSettings?.volume ?? 50);
   const [needsAudioChoice, setNeedsAudioChoice] = useState(audioSettings === null);
-  const [audioPreview, setAudioPreview] = useState(false);
+  const [audioPreview, setAudioPreview] = useState(0);
   useEffect(() => {
     if (!audioPreview) return;
-    const timeout = window.setTimeout(() => setAudioPreview(false), 3300);
+    const timeout = window.setTimeout(() => setAudioPreview(0), 3300);
     return () => window.clearTimeout(timeout);
   }, [audioPreview]);
   const [answerOrder, setAnswerOrder] = useState(() => shuffleAnswers());
@@ -146,7 +147,7 @@ function Trainer({ mode, onModeChange }: { mode: number; onModeChange: (mode: nu
     if (enabled) {
       const previewVolume = volume > 0 ? volume : 50;
       setVolume(previewVolume);
-      setAudioPreview(true);
+      setAudioPreview(Date.now());
       void play(14, previewVolume);
     }
   }
@@ -191,8 +192,8 @@ function Trainer({ mode, onModeChange }: { mode: number; onModeChange: (mode: nu
 
     };
   }, [running, needsAudioChoice, index, round, range]);
-  async function play(noteIndex = index, previewVolume?: number) {
-    if (previewVolume === undefined && (!sound || volume === 0 || needsAudioChoice || mode === 3)) return;
+  async function play(noteIndex = index, previewVolume?: number, pianoMidi?: number) {
+    if (previewVolume === undefined && (!sound || volume === 0 || needsAudioChoice || (mode === 3 && pianoMidi === undefined))) return;
     try {
       const ctx = audio.current ?? new AudioContext(); audio.current = ctx;
       await ctx.resume();
@@ -209,7 +210,7 @@ function Trainer({ mode, onModeChange }: { mode: number; onModeChange: (mode: nu
       }
       const source = ctx.createBufferSource();
       const gain = ctx.createGain();
-      source.buffer = guitarBuffer(ctx, NOTES[noteIndex].midi - 12);
+      source.buffer = guitarBuffer(ctx, pianoMidi ?? NOTES[noteIndex].midi - 12);
       source.connect(gain); gain.connect(masterGain.current);
       guitarVoice.current = { source, gain };
       source.onended = () => {
@@ -312,14 +313,18 @@ function Trainer({ mode, onModeChange }: { mode: number; onModeChange: (mode: nu
             {mode === 2 ? <Fretboard target={index} /> : <Staff index={index} reveal={answer !== null || hint} />}
             {mode !== 2 && <div className="notation-label">СКРИПИЧНЫЙ КЛЮЧ · ГИТАРА</div>}
             {mode === 0 ? <div className="answers">{answerOrder.map((i, position) => <button ref={position === 0 ? firstAnswer : undefined} key={NOTES[i].letter} disabled={answer !== null} className={`answer ${answer !== null && isCorrectAnswer(i, index) ? 'correct' : ''} ${answer === i && !isCorrectAnswer(i, index) ? 'incorrect' : ''}`} onClick={() => choose(i)}>{NOTES[i].name} <span>({NOTES[i].letter})</span>{answer !== null && isCorrectAnswer(i, index) && <b aria-label="Правильный ответ"> ✓</b>}</button>)}</div>
-            : mode === 3 ? <Microphone onEnableSound={() => { setSound(true); if (volume === 0) setVolume(50); }} onReady={ready => { if (!ready) recognitionClock.current.pause(performance.now()); setMicReady(ready); }} target={NOTES[index].midi - 12} sound={sound} volume={volume} paused={needsAudioChoice || audioPreview || cheatOpen || hint} onMatch={() => choose(index)} onWrong={() => { micWrong.current = true; }} onActive={active => { if (!active && micActive) recognitionClock.current.pause(performance.now(), true); setMicActive(active); }} />
+            : mode === 3 ? <Microphone onEnableSound={() => { setSound(true); if (volume === 0) setVolume(50); }} onReady={ready => { if (!ready) recognitionClock.current.pause(performance.now()); setMicReady(ready); }} target={NOTES[index].midi - 12} sound={sound} volume={volume} paused={needsAudioChoice || audioPreview > 0 || cheatOpen || hint} onMatch={() => choose(index)} onWrong={() => { micWrong.current = true; }} onActive={active => { if (!active && micActive) recognitionClock.current.pause(performance.now(), true); setMicActive(active); }} />
             : mode === 1 ? <Fretboard target={answer !== null || hint ? index : null} answer={answer} onChoose={choose} firstButton={firstAnswer} />
             : <div className="staff-choices">{noteChoices.map((i, position) => <button ref={position === 0 ? firstAnswer : undefined} key={i} disabled={answer !== null} className={`answer staff-choice ${answer !== null && i === index ? 'correct' : ''} ${answer === i && i !== index ? 'incorrect' : ''}`} onClick={() => choose(i)} aria-label={`Вариант ${position + 1}. ${NOTES[i].hint}`}><Staff index={i} reveal={answer !== null} /><span>{answer !== null && i === index ? '✓ Верная нота' : `Вариант ${position + 1}`}</span></button>)}</div>}
             <div className="feedback" aria-live="polite">{answer !== null ? <><div className={(mode === 0 ? isCorrectAnswer(answer, index) : answer === index) ? 'feedback-title success' : 'feedback-title'}>{(mode === 0 ? isCorrectAnswer(answer, index) : answer === index) ? 'Верно, это ' : 'Это '}{NOTES[index].name} ({NOTES[index].letter}){(mode === 0 ? isCorrectAnswer(answer, index) : answer === index) ? '!' : '. Запомним вместе.'}</div><p>{NOTES[index].hint} {guitarPositions(NOTES[index].midi)}.</p><div className="feedback-actions"><button className="text-button" disabled={!sound || mode === 3} onClick={() => void play()}>♫ Послушать</button><button ref={nextButton} className="primary" onClick={next}>{round === 9 ? 'К результатам' : 'Следующая нота'} <span>→</span></button></div></> : <><button className="text-button hint-button" onClick={() => { usedHint.current = true; setHint(v => !v); }} aria-expanded={hint}>ⓘ {hint ? 'Скрыть подсказку' : 'Нужна подсказка?'}</button>{hint ? <p>{NOTES[index].hint} Это {NOTES[index].name} ({NOTES[index].letter}). {guitarPositions(NOTES[index].midi)}.</p> : <p className="encouragement">Без спешки. Здесь можно ошибаться.</p>}</>}</div>
           </>}
         </section>
         <aside><section className="side-card"><div className="eyebrow">{MODES[mode].label.toUpperCase()}</div><h3>Маленькие шаги,<br />заметный прогресс</h3><div className="stats"><div><strong>{progress.sessions}</strong><span>тренировок</span></div><div><strong>{progress.total ? `${accuracy}%` : '—'}</strong><span>{mode === 3 ? 'без поиска' : 'точность'}</span></div></div><p>{progress.total ? `Уже ${progress.total} ${progress.total === 1 ? 'ответ' : 'ответов'}. Продолжай в своём ритме.` : 'Первая нота — начало. Давай попробуем?'}</p><div className="local-note">{storageError ? 'Не удалось сохранить прогресс в браузере.' : 'Прогресс сохраняется в этом браузере'}</div></section>
-        <section className="tip-card"><span className="tip-symbol" aria-hidden="true">♮</span><div className="eyebrow">НА ЗАМЕТКУ</div><h3>Линейки считаем снизу</h3><p>Ноты живут и на линейках, и между ними. Чем выше нота на стане, тем выше её звук.</p><div className="note-map">До <span>C</span><i /> Ре <span>D</span><i /> Ми <span>E</span></div></section>
+        <Piano onPlay={midi => {
+          if (!sound || volume === 0 || needsAudioChoice) return;
+          setAudioPreview(Date.now());
+          void play(index, undefined, midi);
+        }} />
         </aside>
       </div>
       <section className="cheatsheet">

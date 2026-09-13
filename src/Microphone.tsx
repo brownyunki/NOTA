@@ -181,13 +181,7 @@ export function Microphone(props: Props) {
     {error ? <p role="alert">{error}</p> : <p role="status"><span className="mic-status-icon" aria-hidden="true">{status === 'wrong' ? '↔' : status === 'correct' ? '✓' : '●'}</span>{message}</p>}
     <div className="mic-settings">
       {active && <button className="text-button" onClick={recalibrate}>Настроить чувствительность заново</button>}
-      {!props.sound || props.volume === 0 ? <button className="text-button" onClick={props.onEnableSound}>Включить звук правильного ответа</button> : active && <button className="text-button" onClick={() => {
-        if (calibration.current.phase !== 'done') return;
-        silenceGate.current.reset(); latest.current.onReady(false);
-        stable.current.readyAt = performance.now() + 800;
-        stable.current.midi = -1;
-        successCue();
-      }} disabled={calibrating}>Проверить сигнал успеха</button>}
+      {(!props.sound || props.volume === 0) && <button className="text-button" onClick={props.onEnableSound}>Включить звук правильного ответа</button>}
     </div>
     <small>Звук обрабатывается на устройстве и не записывается. Можно искать нужную ноту без ограничения попыток.</small>
   </section>;
