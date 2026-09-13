@@ -17,7 +17,7 @@ export function Piano({ onPlay }: { onPlay: (midi: number) => void }) {
   const [selected, setSelected] = useState<string | null>(null);
   function select(key: string, midi: number) { setSelected(current => current === key ? null : key); onPlay(midi); }
   return <section className="piano-card" aria-labelledby="piano-title">
-    <div className="piano-header"><div><div className="eyebrow">НОТЫ РЯДОМ</div><h3 id="piano-title">От До до До</h3></div>
+    <div className="piano-header"><div><h3 id="piano-title">Клавиши и ноты</h3></div>
       <button className="piano-eye" aria-pressed={visible} aria-label={visible ? 'Скрыть постоянные подписи нот' : 'Всегда показывать названия нот'} title={visible ? 'Скрыть подписи' : 'Показать все подписи'} onClick={() => { setVisible(v => !v); setSelected(null); }}>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{visible ? <><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z" /><circle cx="12" cy="12" r="3" /></> : <><path d="M3 9c4 7 14 7 18 0" /><path d="m5 12-2 3m5.5-1  -1 3m4.5-2v3m3.5-4 1 3m2.5-5 2 3" /></>}</svg>
       </button>
