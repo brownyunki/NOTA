@@ -99,6 +99,7 @@ export function Microphone(props: Props) {
       if (generation.current !== token) { stream.getTracks().forEach(t => t.stop()); void ctx.close(); return; }
       const source = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser(); analyser.fftSize = 4096;
+      analyser.smoothingTimeConstant = 0;
       source.connect(analyser);
       const data = new Float32Array(analyser.fftSize);
       const rate = ctx.sampleRate;
@@ -115,7 +116,7 @@ export function Microphone(props: Props) {
         const rms = Math.sqrt(energy / data.length);
         setLevel(Math.min(100, rms / thresholds.current.reference * 80));
         if (current.completed) { silenceGate.current.reset(); current.onReady(false); setStatus('waiting'); setMessage('Тренировка завершена. Микрофон включён, проверка нот на паузе. Можно начать ещё 10 нот.'); return; }
-        if (current.paused || document.hidden) { silenceGate.current.reset(); current.onReady(false); stable.current.midi = -1; setStatus('listening'); setMessage('Пауза — закрой подсказки и окно настроек, затем приглуши струны.'); return; }
+        if (current.paused || document.hidden) { silenceGate.current.reset(); current.onReady(false); stable.current.midi = -1; setStatus('waiting'); setMessage('Пауза — закрой подсказки и окно настроек, затем приглуши струны.'); return; }
         const now = performance.now();
         if (now < stable.current.readyAt || stable.current.matched) return;
         const setup = calibration.current;

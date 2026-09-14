@@ -101,3 +101,7 @@ footer{justify-content:center;align-items:center;text-align:center;font-size:11p
   .shell>header .volume-control output{flex:0 0 32px;text-align:right;font-variant-numeric:tabular-nums}
   .shell>header .audio-choice-button{grid-area:choice;justify-self:end;margin:0;padding:9px 0 9px 8px}
 }
+.session-speed .new-record-celebration{display:flex;align-items:center;justify-content:center;gap:10px;width:fit-content;max-width:100%;box-sizing:border-box;margin:18px auto 6px;padding:13px 18px;border:1px solid #b6c99e;border-radius:14px;background:#e8f1dc;color:#365843;font-size:16px;font-weight:800;line-height:1.4;box-shadow:0 4px 14px #557b3712;animation:record-appear .45s ease-out}
+.new-record-celebration>span{font-size:28px;flex-shrink:0}
+@keyframes record-appear{from{opacity:0;transform:translateY(6px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}
+@media(prefers-reduced-motion:reduce){.session-speed .new-record-celebration{animation:none}}
