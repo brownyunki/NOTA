@@ -2,3 +2,8 @@ node_modules
 dist
 *.tsbuildinfo
 .audio-analysis/
+/debug/
+/examples/*.m4a
+/examples/*.mp3
+/examples/*.wav
+/examples/nota-debug-*.json

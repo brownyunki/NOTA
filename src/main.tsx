@@ -181,19 +181,17 @@ function Fretboard({ target, answer, onChoose, firstButton, labeled = false, rel
   </div><p className="fret-legend">1 — тонкая струна сверху · 6 — толстая снизу</p></div>;
 }
 function App() {
-  const [staffGame, setStaffGame] = useState<'point' | 'choices'>(() => {
-    try { return localStorage.getItem('nota-staff-game') === 'point' ? 'point' : 'choices'; } catch { return 'choices'; }
-  });
+  const [staffGame, setStaffGame] = useState<'point' | 'choices'>('point');
   const [mode, setMode] = useState(() => {
     try { const saved = localStorage.getItem('nota-mode'); return saved !== null && ['0', '1', '2', '3'].includes(saved) ? Number(saved) : 0; } catch { return 0; }
   });
   function changeMode(value: number) {
+    if (value === 2 && mode !== 2) setStaffGame('point');
     setMode(value);
     try { localStorage.setItem('nota-mode', String(value)); } catch { /* Keep the mode for this visit. */ }
   }
   function changeStaffGame(value: 'point' | 'choices') {
     setStaffGame(value);
-    try { localStorage.setItem('nota-staff-game', value); } catch { /* Keep choice for this visit. */ }
   }
   return <Trainer key={`${mode}:${staffGame}`} mode={mode} onModeChange={changeMode} staffGame={staffGame} onStaffGameChange={changeStaffGame} />;
 }
@@ -416,16 +414,15 @@ function Trainer({ mode, onModeChange, staffGame, onStaffGameChange }: { mode: n
     </dialog>
     <header><a className="brand" href="./" aria-label="Нота, главная"><span className="brand-icon">♪</span> нота<span className="brand-dot">.</span></a><button className={`sound ${sound ? '' : 'muted'}`} onClick={() => setSound(v => !v)} aria-pressed={sound} aria-label={sound ? 'Выключить звук' : 'Включить звук'}><span aria-hidden="true">{sound ? '♫' : '♩'}</span><span>Звук {sound ? 'вкл' : 'выкл'}</span></button><label className="volume-control"><span>Громкость</span><input type="range" min="0" max="100" step="1" value={volume} onChange={event => setVolume(Number(event.target.value))} aria-label="Громкость звука" /><output>{volume}%</output></label><button className="text-button audio-choice-button" onClick={() => setNeedsAudioChoice(true)}>Выбрать звук</button></header>
     <main>
-      <section className="intro"><div className="eyebrow"><span /> НЕМНОГО ПРАКТИКИ КАЖДЫЙ ДЕНЬ</div><h1>Подружись с нотами</h1><p>Учись читать музыку в своём темпе.<br className="mobile-break" /> Одна нота за раз.</p></section>
+      <section className="intro"><div className="eyebrow"><span /> НЕМНОГО ПРАКТИКИ КАЖДЫЙ ДЕНЬ</div><h1>Подружись с нотами</h1></section>
       <div className="workspace">
         <section className={`exercise ${mode === 3 && !micTraining ? 'mic-preparing' : ''}`} aria-label="Тренировка">
           <nav className="mode-picker" aria-label="Режим тренировки">{MODES.map((item, i) => <button key={item.key} aria-pressed={mode === i} onClick={() => onModeChange(i)}>{item.label}{i === 3 && <small className="mic-permission-label">Нужен доступ к микрофону</small>}</button>)}</nav>
           {mode === 2 && <div className="cheat-view-switch" role="group" aria-label="Вариант игры"><button aria-pressed={staffGame === 'point'} onClick={() => onStaffGameChange('point')}>Указать на стане</button><button aria-pressed={staffGame === 'choices'} onClick={() => onStaffGameChange('choices')}>4 варианта</button></div>}
           <p className="mode-note">При смене режима начинается новая тренировка. Прогресс каждого режима сохраняется отдельно.{mode === 2 && ' У двух вариантов игры свои результаты и рекорды.'}</p>
-<div className="guitar-range"><strong>Гитара · первые три лада</strong><span>Ми · 6-я открытая → Соль · 1-я, 3-й лад</span><small>Стандартный строй · Только ноты без диезов и бемолей</small></div>
           
           <div className="answer-notice" role="status" aria-live="polite" aria-atomic="true">{successMessage && <span key={round}>{successMessage}</span>}</div>
-          {!started ? <div className="timer-start"><div className="eyebrow">В СВОЁМ ТЕМПЕ</div><h2>Готов к 10 нотам?</h2><p>{instruction} Занимайся в удобном ритме — здесь можно ошибаться.</p><button className="primary" data-enter-start="true" aria-keyshortcuts="Enter" onClick={() => { usedHint.current = cheatOpen; setStarted(true); }}>{mode === 3 ? 'Подготовить микрофон →' : 'Начать тренировку →'}</button></div> : finished ? <div className="results"><div className="result-icon">✓</div><div className="eyebrow">ТРЕНИРОВКА ЗАВЕРШЕНА</div><h2>{score === 10 ? 'Все ноты на месте!' : 'Ещё на шаг ближе'}</h2><p>Каждая попытка помогает запомнить музыку.</p><div className="result-score">{score}<span> / 10</span></div><p>{mode === 3 ? 'нот без поиска другого звука' : 'правильных ответов'}</p><div className="session-speed"><strong>{seconds(timing.total)}</strong><span>на все ответы · в среднем {seconds(timing.average)} на ноту</span><p>{newRecord ? 'Новый личный рекорд!' : timing.eligible ? 'Отличная чистая тренировка!' : 'Для рекорда нужны 10 верных ответов без подсказок и перерывов.'}</p></div><button className="primary" data-enter-start="true" aria-keyshortcuts="Enter" onClick={restart}>Ещё 10 нот <span>→</span></button><small>Ноты, которые вызвали трудности, повторим чаще.</small></div> : <>
+          {!started ? <div className="timer-start"><div className="eyebrow">В СВОЁМ ТЕМПЕ</div><h2>Готов к 10 нотам?</h2><p>{instruction} Занимайся в удобном ритме — здесь можно ошибаться.</p><button className="primary" data-enter-start="true" aria-keyshortcuts="Enter" onClick={() => { usedHint.current = cheatOpen; setStarted(true); }}>{mode === 3 ? 'Подготовить микрофон →' : 'Начать тренировку →'}</button><small>Гитара · первые три лада<br />Ми · 6-я открытая → Соль · 1-я, 3-й лад<br />Стандартный строй · Без диезов и бемолей</small></div> : finished ? <div className="results"><div className="result-icon">✓</div><div className="eyebrow">ТРЕНИРОВКА ЗАВЕРШЕНА</div><h2>{score === 10 ? 'Все ноты на месте!' : 'Ещё на шаг ближе'}</h2><p>Каждая попытка помогает запомнить музыку.</p><div className="result-score">{score}<span> / 10</span></div><p>{mode === 3 ? 'нот без поиска другого звука' : 'правильных ответов'}</p><div className="session-speed"><strong>{seconds(timing.total)}</strong><span>на все ответы · в среднем {seconds(timing.average)} на ноту</span><p className={newRecord ? 'new-record-celebration' : undefined}>{newRecord ? <><span aria-hidden="true">💪</span> Новый личный рекорд!</> : timing.eligible ? 'Отличная чистая тренировка!' : 'Для рекорда нужны 10 верных ответов без подсказок и перерывов.'}</p></div><button className="primary" data-enter-start="true" aria-keyshortcuts="Enter" onClick={restart}>Ещё 10 нот <span>→</span></button><small>Ноты, которые вызвали трудности, повторим чаще.</small></div> : <>
             <div className="exercise-top"><span className="lesson-label">01 <span>{MODES[mode].label}</span></span><span className="counter">{round + 1}<span> / 10</span></span></div>
             <div className="progress-track" role="progressbar" aria-label="Прогресс тренировки" aria-valuenow={round + Number(answer !== null)} aria-valuemin={0} aria-valuemax={10}><div style={{ width: `${(round + Number(answer !== null)) * 10}%` }} /></div>
             <div className="question"><h2>{MODES[mode].question}</h2><p>{instruction}</p></div>
