@@ -74,7 +74,7 @@ export function Tuner({ onClose }: { onClose: () => void }) {
       setError(reason instanceof DOMException && reason.name === 'NotAllowedError' ? 'Разреши доступ к микрофону в настройках браузера.' : 'Не удалось включить микрофон. Проверь подключение и попробуй снова.');
     }
   }
-  const angle = cents === null ? 0 : Math.max(-50, Math.min(50, cents)) * 1.5;
+  const angle = cents === null ? 0 : Math.max(-25, Math.min(25, cents)) * 3;
   const message = !active ? 'Включи микрофон, чтобы настроить гитару' : cents === null ? 'Сыграй выбранную открытую струну' : tuned ? 'Струна настроена' : Math.abs(cents) > 150 ? 'Далеко от цели — проверь выбранную струну' : cents < 0 ? 'Ниже нужного — немного подтяни струну' : 'Выше нужного — немного ослабь струну';
   const backdrop = useRef(false);
   function outside(x: number, y: number) {
@@ -91,21 +91,20 @@ export function Tuner({ onClose }: { onClose: () => void }) {
       <p className="tuner-help">Выбери струну и играй её открытой, приглушив остальные.</p>
       <div className="tuner-strings" role="group" aria-label="Струна, от шестой к первой">{TUNINGS[tuning].notes.map((midi, index) => <button key={index} aria-pressed={string === index} onClick={() => { setString(index); setFrequency(null); samples.current = []; }}><small>{6 - index}-я</small><span>{heardName(midi)}</span></button>)}</div>
       <div className={`tuner-gauge ${tuned ? 'in-tune' : ''}`}>
-        <svg viewBox="0 0 320 205" role="img" aria-label={cents === null ? 'Шкала тюнера, нет сигнала' : `Отклонение ${Math.round(cents)} центов`}>
+        <svg viewBox="0 0 320 205" role="img" aria-label={frequency === null ? 'Шкала тюнера, нет сигнала' : `Сейчас ${frequency.toFixed(1)} Гц, нужно ${targetFrequency(target).toFixed(1)} Гц`}>
           <path className="tuner-arc" d="M 44 149 A 120 120 0 0 1 276 149" />
-          <path className="tuner-zone" d="M 144 61 A 120 120 0 0 1 176 61" />
+          <path className="tuner-zone" d="M 129 64 A 120 120 0 0 1 191 64" />
           {Array.from({ length: 21 }, (_, i) => { const a = (i - 10) * 7.5 * Math.PI / 180; const r = i % 5 === 0 ? 99 : 106; return <line key={i} x1={160 + Math.sin(a) * r} y1={180 - Math.cos(a) * r} x2={160 + Math.sin(a) * 116} y2={180 - Math.cos(a) * 116} stroke="currentColor" strokeWidth={i % 5 === 0 ? 2 : 1} />; })}
-          <text x="30" y="174">−50</text><text x="160" y="40">0</text><text x="290" y="174">+50</text>
+          <text x="30" y="174">Ниже</text><text x="160" y="40">В цель</text><text x="290" y="174">Выше</text>
           <g className="tuner-needle" style={{ transform: `rotate(${angle}deg)`, opacity: cents === null ? 0.2 : 1 }}><path d="M 156 180 L 160 78 L 164 180 Z" fill="currentColor" /></g>
           <circle cx="160" cy="180" r="7" fill="currentColor" />
         </svg>
-        <strong>{heardName(target)}</strong><span>{6 - string}-я открытая · {targetFrequency(target).toFixed(1)} Гц</span>
-        <div className="tuner-reading">{cents === null ? '—' : `${cents > 0 ? '+' : ''}${Math.round(cents)} центов`}</div>
+        <strong>{heardName(target)}</strong><span>{6 - string}-я открытая</span>
+        <div className="tuner-reading tuner-frequencies"><div><small>Сейчас</small><strong>{frequency === null ? '—' : `${frequency.toFixed(1)} Гц`}</strong></div><div><small>Нужно</small><strong>{targetFrequency(target).toFixed(1)} Гц</strong></div></div>
       </div>
       <p className="tuner-status" role="status">{message}</p>
       {error && <p className="tuner-error" role="alert">{error}</p>}
       <button className="primary" onClick={active || pending ? stop : () => void start()}>{pending ? 'Отменить подключение' : active ? 'Выключить микрофон' : 'Включить микрофон'}</button>
-      <p className="tuner-help">Ля = 440 Гц · Звук обрабатывается на устройстве и не записывается. Строй упражнений остаётся стандартным.</p>
     </div>
   </dialog>;
 }

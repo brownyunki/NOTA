@@ -5,6 +5,7 @@ import { isNewerVersion, parseReleases } from './releases';
 
 const releases = parseReleases(changelog);
 const version = metadata.version;
+const historyVersion = releases[0].version;
 const openedKey = 'nota-last-opened-version';
 const readKey = 'nota-changelog-read-version';
 function readVersion() {
@@ -12,7 +13,7 @@ function readVersion() {
 }
 export function ReleaseHistory({ onOpenChange }: { onOpenChange: (open: boolean) => void }) {
   const [previous] = useState(readVersion);
-  const [unread, setUnread] = useState(() => previous !== null && isNewerVersion(version, previous));
+  const [unread, setUnread] = useState(() => previous !== null && isNewerVersion(historyVersion, previous));
   const dialog = useRef<HTMLDialogElement>(null);
   const backdropPress = useRef(false);
   function outsideDialog(x: number, y: number) {
@@ -22,13 +23,13 @@ export function ReleaseHistory({ onOpenChange }: { onOpenChange: (open: boolean)
   useEffect(() => {
     try {
       localStorage.setItem(openedKey, version);
-      if (previous === null) localStorage.setItem(readKey, version);
+      if (previous === null) localStorage.setItem(readKey, historyVersion);
       else if (!localStorage.getItem(readKey)) localStorage.setItem(readKey, previous);
     } catch { /* History remains available without storage. */ }
   }, [previous]);
   function openHistory() {
     dialog.current?.showModal(); onOpenChange(true); setUnread(false);
-    try { localStorage.setItem(readKey, version); } catch { /* Optional persistence. */ }
+    try { localStorage.setItem(readKey, historyVersion); } catch { /* Optional persistence. */ }
   }
   return <>
     <button className="version-button" onClick={openHistory} aria-haspopup="dialog" aria-label={`Версия ${version}. История изменений${unread ? '. Есть обновления' : ''}`}>
