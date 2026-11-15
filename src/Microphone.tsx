@@ -5,7 +5,7 @@ import { sensitivity } from './calibration';
 // Memory only: shared by workouts and modes, cleared by a page refresh.
 let visitCalibration: NonNullable<ReturnType<typeof sensitivity>> | null = null;
 
-type Props = { target: number; completed: boolean; paused: boolean; sound: boolean; volume: number; onTraining: (training: boolean) => void; onEnableSound: () => void; onMatch: () => void; onWrong: () => void; onActive: (active: boolean) => void; onReady: (ready: boolean) => void };
+type Props = { suspended?: boolean; target: number; completed: boolean; paused: boolean; sound: boolean; volume: number; onTraining: (training: boolean) => void; onEnableSound: () => void; onMatch: () => void; onWrong: () => void; onActive: (active: boolean) => void; onReady: (ready: boolean) => void };
 export function Microphone(props: Props) {
   const latest = useRef(props); latest.current = props;
   const [active, setActive] = useState(false);
@@ -83,6 +83,7 @@ export function Microphone(props: Props) {
     stable.current = { midi: -1, since: 0, target: props.target, matched: false, readyAt: performance.now() + 700 };
     setMessage(active ? 'Приглуши струну. Дождусь затухания и начну слушать следующую ноту.' : 'Включи микрофон и приглуши струны перед началом.');
   }, [props.target]);
+  useEffect(() => { if (props.suspended) stop(); }, [props.suspended]);
   async function start() {
     if (pending || active) return;
     if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
