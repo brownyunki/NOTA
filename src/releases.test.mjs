@@ -1,6 +1,17 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { isNewerVersion, parseReleases } from './releases.ts';
+import { isNewerVersion, parseReleases, validateReleaseMetadata } from './releases.ts';
+
+test('a release without changelog explicitly retains the previous history version', () => {
+  const releases = parseReleases('## 2026.11.15.1\n### Новое\n- Добавлен тюнер.');
+  assert.doesNotThrow(() => validateReleaseMetadata({ version: '2026.11.15.2', changelogVersion: '2026.11.15.1' }, releases));
+  assert.doesNotThrow(() => validateReleaseMetadata({ version: '2026.11.15.1' }, releases));
+  assert.throws(() => validateReleaseMetadata({ version: '2026.11.15.2' }, releases));
+  assert.throws(() => validateReleaseMetadata({ version: '2026.11.14.1', changelogVersion: '2026.11.15.1' }, releases));
+  assert.throws(() => validateReleaseMetadata({ version: 'invalid', changelogVersion: '2026.11.15.1' }, releases));
+  assert.equal(isNewerVersion(releases[0].version, '2026.11.15.1'), false);
+  assert.equal(isNewerVersion(releases[0].version, '2026.09.15.1'), true);
+});
 
 test('versions compare numeric release counters and dates', () => {
   assert.equal(isNewerVersion('2026.09.13.10', '2026.09.13.9'), true);

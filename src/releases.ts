@@ -1,6 +1,12 @@
 export type Release = { version: string; sections: { title: string; items: string[] }[] };
 export const versionPattern = /^\d{4}\.\d{2}\.\d{2}\.[1-9]\d*$/;
 
+export function validateReleaseMetadata(metadata: { version: string; changelogVersion?: string }, releases: Release[]) {
+  const historyVersion = metadata.changelogVersion ?? metadata.version;
+  if (!versionPattern.test(metadata.version) || !versionPattern.test(historyVersion)) throw new Error('Некорректная версия выпуска.');
+  if (historyVersion !== releases[0]?.version || isNewerVersion(historyVersion, metadata.version)) throw new Error('Версия истории должна совпадать с CHANGELOG.md и не превышать версию сайта.');
+}
+
 // Deliberately small Markdown subset: version headings, section headings, bullets.
 export function parseReleases(source: string): Release[] {
   const releases: Release[] = [];
